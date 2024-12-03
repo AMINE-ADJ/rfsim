@@ -181,7 +181,7 @@ typedef struct {
 
 static void allocCirBuf(rfsimulator_state_t *bridge, int sock)
 {
-  buffer_t *ptr = &bridge->buf[0];
+  buffer_t *ptr = &bridge->buf[0];// substitute subs socket
   AssertFatal((ptr->circularBuf = (sample_t *)malloc(sampleToByte(CirSize, 1))) != NULL, "");
   ptr->circularBufEnd = ((char *)ptr->circularBuf) + sampleToByte(CirSize, 1);
   ptr->pub_sock = bridge->pub_sock;
@@ -940,8 +940,11 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 {
   // Process all incoming events on sockets
   // store the data in lists
-  struct epoll_event events[FD_SETSIZE] = {{0}};
-  int nfds = epoll_wait(t->epollfd, events, FD_SETSIZE, timeout);
+  // struct epoll_event events[FD_SETSIZE] = {{0}};
+  zmq_pollitem_t items[] = {
+        { t->sub_sock, 0, ZMQ_POLLIN, 0 }
+    };
+  // int nfds = epoll_wait(t->epollfd, events, FD_SETSIZE, timeout);
 
   if (nfds == -1) {
     if (errno == EINTR || errno == EAGAIN) {
@@ -1095,51 +1098,52 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         nbAnt); // qst what will release
   // deliver data from received data
   // check if a UE is connected
-  int first_sock;
+  // int first_sock;
 
-  for (first_sock = 0; first_sock < FD_SETSIZE; first_sock++)
-    if (t->buf[first_sock].circularBuf != NULL) // they are not allocated yet
-      break;
+  // for (first_sock = 0; first_sock < FD_SETSIZE; first_sock++)
+  // if (t->buf[0].circularBuf != NULL) // they are not allocated yet
+      // break;
 
-  if (first_sock == FD_SETSIZE) {
-    // no connected device (we are eNB, no UE is connected)
-    if (t->nextRxTstamp == 0)
-      LOG_W(HW, "No connected device, generating void samples...\n");
+  // if (first_sock == FD_SETSIZE) {
+  //   // no connected device (we are eNB, no UE is connected)
+  //   if (t->nextRxTstamp == 0)
+  //     LOG_W(HW, "No connected device, generating void samples...\n");
 
-    if (!flushInput(t, t->wait_timeout, nsamps)) {
-      for (int x = 0; x < nbAnt; x++)
-        memset(samplesVoid[x], 0, sampleToByte(nsamps, 1));
+  //   if (!flushInput(t, t->wait_timeout, nsamps)) {
+  //     for (int x = 0; x < nbAnt; x++)
+  //       memset(samplesVoid[x], 0, sampleToByte(nsamps, 1));
 
-      t->nextRxTstamp += nsamps;
+  //     t->nextRxTstamp += nsamps;
 
-      if (((t->nextRxTstamp / nsamps) % 100) == 0) // qst why 100
-        LOG_D(HW, "No UE, Generated void samples for Rx: %ld\n", t->nextRxTstamp);
+  //     if (((t->nextRxTstamp / nsamps) % 100) == 0) // qst why 100
+  //       LOG_D(HW, "No UE, Generated void samples for Rx: %ld\n", t->nextRxTstamp);
 
-      *ptimestamp = t->nextRxTstamp - nsamps; // qst is this the current time stamp
-      return nsamps; // qst where is the return data used
-    }
-  } else {
+  //     *ptimestamp = t->nextRxTstamp - nsamps; // qst is this the current time stamp
+  //     return nsamps; // qst where is the return data used
+  //   }
+  // } 
+  if (t->buf[0].circularBuf != NULL) {
     bool have_to_wait;
 
     do {
       have_to_wait = false;
 
-      for (int sock = 0; sock < FD_SETSIZE; sock++) {
-        buffer_t *b = &t->buf[sock];
+      // for (int sock = 0; sock < FD_SETSIZE; sock++) {
+      buffer_t *b = &t->buf[0];
 
-        if (b->circularBuf)
-          if (t->nextRxTstamp + nsamps > b->lastReceivedTS) { // we need to read until we reach the current timestamp
-            have_to_wait = true;
-            break;
-          }
-      }
+      if (b->circularBuf)
+        if (t->nextRxTstamp + nsamps > b->lastReceivedTS) { // we need to read until we reach the current timestamp
+          have_to_wait = true;
+          break;
+        }
+      // }
 
       if (have_to_wait)
         /*printf("Waiting on socket, current last ts: %ld, expected at least : %ld\n",
           ptr->lastReceivedTS,
           t->nextRxTstamp+nsamps);
         */
-        flushInput(t, 3, nsamps);
+        flushInput(t, 3, nsamps);// FIXME
     } while (have_to_wait);
   }
 
@@ -1148,13 +1152,13 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
     memset(samplesVoid[a], 0, sampleToByte(nsamps, 1));
 
   // Add all input nodes signal in the output buffer
-  for (int sock = 0; sock < FD_SETSIZE; sock++) {
-    buffer_t *ptr = &t->buf[sock];
+  // for (int sock = 0; sock < FD_SETSIZE; sock++) {
+    buffer_t *ptr = &t->buf[0];
 
     if (ptr->circularBuf) {
       bool reGenerateChannel = false;
 
-      // fixme: when do we regenerate
+      // FIXME: when do we regenerate
       //  it seems legacy behavior is: never in UL, each frame in DL
       if (reGenerateChannel)
         random_channel(ptr->channel_model, 0);
@@ -1185,7 +1189,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         } // end of no channel modeling
       } // end for a (number of rx antennas)
     }
-  }
+  // }
 
   *ptimestamp = t->nextRxTstamp; // return the time of the first sample
   t->nextRxTstamp += nsamps;
