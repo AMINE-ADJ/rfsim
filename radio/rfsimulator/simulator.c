@@ -96,7 +96,8 @@ typedef enum { SIMU_ROLE_SERVER = 1, SIMU_ROLE_CLIENT } simuRole;
 
 //
 
-#define RFSIMU_S  ECTION    "rfsimulator"
+#define RFSIMU_SECTION    "rfsimulator"
+
 #define RFSIMU_OPTIONS_PARAMNAME "options"
 
 
@@ -714,7 +715,7 @@ static int startServer(openair0_device *device)
   allocCirBuf(t, t->fd_sub_sock);
   LOG_I(HW, "rfsimulator: StartServer Ends\n");
 
-  AssertFatal(false, "error StartServer\n");
+  // AssertFatal(false, "error StartServer\n");
 
   return 0;
 
@@ -864,7 +865,7 @@ static int startClient(openair0_device *device)
   allocCirBuf(t, t->fd_sub_sock);
   LOG_I(HW, "rfsimulator: Start Client Ends\n");
 
-  AssertFatal(false, "error StartClient\n");
+  // AssertFatal(false, "error StartClient\n");
 
   return 0;
 
@@ -939,70 +940,65 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on sockets
   // store the data in lists
-  struct epoll_event events[MAX_FD_RFSIMU] = {{0}};
-  int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
+  LOG_I(HW, "FlushInput Starts \n");
 
-  if ( nfds==-1 ) {
-    if ( errno==EINTR || errno==EAGAIN ) {
-      return false;
-    } else {
-      LOG_W(HW, "epoll_wait() failed, errno(%d)\n", errno);
+  // struct epoll_event events[MAX_FD_RFSIMU] = {{0}};
+
+  zmq_pollitem_t items[] = {
+    {t->sub_sock, 0, ZMQ_POLLIN, 0}
+  };
+  int rc = zmq_poll(items, 1, timeout);
+  
+  // int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
+
+    if (rc < 0) {
+      if (errno == EINTR || errno == ETERM) {
+      LOG_W(HW, "ZMQ poll interrupted\n");
       return false;
     }
+    LOG_E(HW, "zmq_poll() failed, errno(%d)\n", errno);
+    return false;
   }
 
-  for (int nbEv = 0; nbEv < nfds; ++nbEv) {
-    int fd=events[nbEv].data.fd;
+  if (rc == 0) {
+    return false;
+  }
 
-    if (events[nbEv].events & EPOLLIN && fd == t->listen_sock) {
-      int conn_sock;
-      conn_sock = accept(t->listen_sock, NULL, NULL);
-      if (conn_sock == -1) {
-        LOG_E(HW, "accept() failed, errno(%d)\n", errno);
-        return false;
-      }
-      if (setblocking(conn_sock, notBlocking)) {
-        return false;
-      }
-      if (allocCirBuf(t, conn_sock) == -1) {
-        return false;
-      }
-      LOG_I(HW, "A client connects, sending the current time\n");
-      c16_t v= {0};
-      nb_ue++;
-      void *samplesVoid[t->tx_num_channels];
 
-      for ( int i=0; i < t->tx_num_channels; i++)
-        samplesVoid[i]=(void *)&v;
+  // if ( t->role == SIMU_ROLE_SERVER ) { 
+  // LOG_I(HW, "Sending the current time\n");
+  //       c16_t v= {0};
+  //       nb_ue++;
+  //       void *samplesVoid[t->tx_num_channels];
 
-      rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+  //       for ( int i=0; i < t->tx_num_channels; i++)
+  //         samplesVoid[i]=(void *)&v;
 
-      buffer_t *b = get_buff_from_socket(t, conn_sock);
-      if (b->channel_model)
-        b->channel_model->start_TS = t->lastWroteTS;
-    } else {
-      if ( events[nbEv].events & (EPOLLHUP | EPOLLERR | EPOLLRDHUP) ) {
-        socketError(t,fd);
-        continue;
-      }
+  //       rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
 
-      buffer_t *b = get_buff_from_socket(t, fd);
-      if (!b) continue;
+  //       buffer_t *b = &t->buf[0];
+  //       if (b->channel_model)
+  //         b->channel_model->start_TS = t->lastWroteTS;
+  // }
+
+  if (items[0].revents & ZMQ_POLLIN) {
+
+      buffer_t *b =  &t->buf[0];
       if ( b->circularBuf == NULL ) {
-        LOG_E(HW, "Received data on not connected socket %d\n", events[nbEv].data.fd);
-        continue;
+        LOG_E(HW, "Received data on not connected socket \n");
       }
 
       ssize_t blockSz;
 
-      if ( b->headerMode)
+      if ( b->headerMode )
         blockSz=b->remainToTransfer;
       else
         blockSz= b->transferPtr + b->remainToTransfer <= b->circularBufEnd ?
                  b->remainToTransfer :
                  b->circularBufEnd - b->transferPtr ;
 
-      ssize_t sz=recv(fd, b->transferPtr, blockSz, MSG_DONTWAIT);
+
+      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, (size_t) blockSz, ZMQ_DONTWAIT);
 
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
@@ -1010,7 +1006,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           //abort();
         }
       } else if ( sz == 0 )
-        continue;
+        // continue;
 
       LOG_D(HW, "Socket rcv %zd bytes\n", sz);
       b->remainToTransfer -= sz;
@@ -1062,7 +1058,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         pthread_mutex_lock(&Sockmutex);
 
         if (t->lastWroteTS != 0 && (fabs((double)t->lastWroteTS-b->lastReceivedTS) > (double)CirSize))
-          LOG_W(HW, "UEsock(%d) Tx/Rx shift too large Tx:%lu, Rx:%lu\n", fd, t->lastWroteTS, b->lastReceivedTS);
+          LOG_W(HW, "UEsock(sub_sock) Tx/Rx shift too large Tx:%lu, Rx:%lu\n", t->lastWroteTS, b->lastReceivedTS);
 
         pthread_mutex_unlock(&Sockmutex);
         b->transferPtr=(char *)&b->circularBuf[(b->lastReceivedTS*b->th.nbAnt)%CirSize];
@@ -1072,11 +1068,11 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       if ( b->headerMode==false ) {
         if ( ! b->trashingPacket ) {
           b->lastReceivedTS=b->th.timestamp+b->th.size-byteToSample(b->remainToTransfer,b->th.nbAnt);
-          LOG_D(HW, "UEsock: %d Set b->lastReceivedTS %ld\n", fd, b->lastReceivedTS);
+          LOG_D(HW, "UEsock: sub_sock Set b->lastReceivedTS %ld\n", b->lastReceivedTS);
         }
 
         if ( b->remainToTransfer==0) {
-          LOG_D(HW, "UEsock: %d Completed block reception: %ld\n", fd, b->lastReceivedTS);
+          LOG_D(HW, "UEsock: sub_sock Completed block reception: %ld\n", b->lastReceivedTS);
           b->headerMode=true;
           b->transferPtr=(char *)&b->th;
           b->remainToTransfer = sizeof(samplesBlockHeader_t);
@@ -1084,42 +1080,27 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         }
       }
     }
-  }
+  // }
+  LOG_I(HW, "FlushInput Ends \n");
 
-  return nfds>0;
+  AssertFatal(false, "rfsimulator: flushInput Ends successfully !");
+  return rc > 0; //true
 }
 
 static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimestamp, void **samplesVoid, int nsamps, int nbAnt)
 {
   rfsimulator_state_t *t = device->priv;
-  LOG_D(HW, "Enter rfsimulator_read, expect %d samples, will release at TS: %ld, nbAnt %d\n", nsamps, t->nextRxTstamp+nsamps, nbAnt);
+  LOG_I(HW, "Enter rfsimulator_read, expect %d samples, will release at TS: %ld, nbAnt %d\n", nsamps, t->nextRxTstamp+nsamps, nbAnt);
 
   // deliver data from received data
   // check if a UE is connected
-  int first_sock;
+  // int first_sock;
 
-  for (first_sock = 0; first_sock < MAX_FD_RFSIMU; first_sock++)
-    if (t->buf[first_sock].circularBuf != NULL )
-      break;
+  // for (first_sock = 0; first_sock < MAX_FD_RFSIMU; first_sock++)
+    // if (t->buf[first_sock].circularBuf != NULL )
+      // break;
 
-  if (first_sock == MAX_FD_RFSIMU) {
-    // no connected device (we are eNB, no UE is connected)
-    if ( t->nextRxTstamp == 0)
-      LOG_I(HW, "No connected device, generating void samples...\n");
-
-    if (!flushInput(t, t->wait_timeout,  nsamps)) {
-      for (int x=0; x < nbAnt; x++)
-        memset(samplesVoid[x],0,sampleToByte(nsamps,1));
-
-      t->nextRxTstamp+=nsamps;
-
-      if ( ((t->nextRxTstamp/nsamps)%100) == 0)
-        LOG_D(HW, "No UE, Generating void samples for Rx: %ld\n", t->nextRxTstamp);
-
-      *ptimestamp = t->nextRxTstamp-nsamps;
-      return nsamps;
-    }
-  } else {
+ if (t->buf[0].circularBuf != NULL ) {
     bool have_to_wait;
 
     do {
@@ -1151,8 +1132,8 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
     memset(samplesVoid[a],0,sampleToByte(nsamps,1));
 
   // Add all input nodes signal in the output buffer
-  for (int sock = 0; sock < MAX_FD_RFSIMU; sock++) {
-    buffer_t *ptr=&t->buf[sock];
+  // for (int sock = 0; sock < MAX_FD_RFSIMU; sock++) {
+    buffer_t *ptr=&t->buf[0];
 
     if ( ptr->circularBuf ) {
       bool reGenerateChannel=false;
@@ -1205,7 +1186,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         } // end of no channel modeling
       } // end for a (number of rx antennas)
     }
-  }
+  // }
 
   *ptimestamp = t->nextRxTstamp; // return the time of the first sample
   t->nextRxTstamp+=nsamps;
@@ -1215,6 +1196,8 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         *ptimestamp,
         t->nextRxTstamp,
         signal_energy(samplesVoid[0], nsamps));
+  
+  // AssertFatal(false, "Terminating rfsimulator_read\n");
   return nsamps;
 }
 
