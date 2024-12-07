@@ -595,6 +595,8 @@ static int rfsimu_vtime_cmd(char *buff, int debug, telnet_printfunc_t prnt, void
 
 static int startServer(openair0_device *device)
 {
+  LOG_I(HW, "rfsimulator: StartServer begins\n");
+
   rfsimulator_state_t *t = (rfsimulator_state_t *)device->priv; // priv holds internal structure of the device
   t->typeStamp = SIMU_ROLE_SERVER;
   // AssertFatal((t->listen_sock = socket(AF_INET, SOCK_STREAM, 0)) >= 0, "");
@@ -716,6 +718,8 @@ static int startServer(openair0_device *device)
 
 static int startClient(openair0_device *device)
 {
+  LOG_I(HW, "rfsimulator: StartClient begins\n");
+
   rfsimulator_state_t *t = device->priv;
   t->typeStamp = UE_MAGICDL;
 

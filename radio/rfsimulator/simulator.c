@@ -94,7 +94,7 @@ typedef enum { SIMU_ROLE_SERVER = 1, SIMU_ROLE_CLIENT } simuRole;
 
 //
 
-#define RFSIMU_SECTION    "rfsimulator"
+#define RFSIMU_S  ECTION    "rfsimulator"
 #define RFSIMU_OPTIONS_PARAMNAME "options"
 
 
