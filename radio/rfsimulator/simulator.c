@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <sys/epoll.h>
 #include <netdb.h>
-
+#include <zmq.h>
 #include <common/utils/assertions.h>
 #include <common/utils/LOG/log.h>
 #include <common/utils/load_module_shlib.h>
@@ -53,6 +53,8 @@
 #include "hashtable.h"
 
 #define PORT 4043 //default TCP port for this simulator
+#define XSUBPORT 5555
+#define XPUBPORT 5556
 //
 // CirSize defines the number of samples inquired for a read cycle
 // It is bounded by a slot read capability (which depends on bandwidth and numerology)
@@ -107,6 +109,9 @@ typedef enum { SIMU_ROLE_SERVER = 1, SIMU_ROLE_CLIENT } simuRole;
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #define simOpt PARAMFLAG_NOFREE|PARAMFLAG_CMDLINE_NOPREFIXENABLED
 #define RFSIMULATOR_PARAMS_DESC {					\
+    {"brokerip",             "<broker ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->brokerip,               .defstrval="127.0.0.1",           TYPE_STRING,    0 },\
+    {"xsubport",             "<port to connect to xsubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xsubport),           .defuintval=XSUBPORT,                 TYPE_UINT16,    0 },\
+    {"xpubport",             "<port to connect to xpubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xpubport),           .defuintval=XPUBPORT,                 TYPE_UINT16,    0 },\
     {"serveraddr",             "<ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->ip,               .defstrval="127.0.0.1",           TYPE_STRING,    0 },\
     {"serverport",             "<port to connect to>\n",              simOpt,  .u16ptr=&(rfsimulator->port),           .defuintval=PORT,                 TYPE_UINT16,    0 },\
     {RFSIMU_OPTIONS_PARAMNAME, RFSIM_CONFIG_HELP_OPTIONS,             0,       .strlistptr=NULL,                       .defstrlistval=NULL,              TYPE_STRINGLIST,0 },\
@@ -144,6 +149,10 @@ static uint64_t CirSize = minCirSize;
 typedef c16_t sample_t; // 2*16 bits complex number
 
 typedef struct buffer_s {
+  void *pub_sock;
+  void *sub_sock; // for communicaiton purposes
+  int fd_pub_sock;
+  int fd_sub_sock;
   int conn_sock;
   openair0_timestamp lastReceivedTS;
   bool headerMode;
@@ -161,6 +170,16 @@ typedef struct {
   openair0_timestamp nextRxTstamp;
   openair0_timestamp lastWroteTS;
   simuRole role;
+
+  void *context;
+  void *pub_sock; // for initialization and connection purposes.
+  void *sub_sock;
+  int fd_pub_sock;
+  int fd_sub_sock;
+  char *brokerip;
+  uint16_t xsubport; 
+  uint16_t xpubport;
+
   char *ip;
   uint16_t port;
   int saveIQfile;
@@ -182,8 +201,8 @@ typedef struct {
   poll_telnetcmdq_func_t poll_telnetcmdq;
   int wait_timeout;
   double prop_delay_ms;
+  zmq_pollitem_t pollitems;
 } rfsimulator_state_t;
-
 
 static buffer_t *get_buff_from_socket(rfsimulator_state_t *simulator_state, int socket)
 {
@@ -214,32 +233,36 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
 {
   /* TODO: cleanup code so that this AssertFatal becomes useless */
   AssertFatal(sock >= 0 && sock < sizeofArray(bridge->buf), "socket %d is not in range\n", sock);
-  uint64_t buff_index = bridge->next_buf++ % MAX_FD_RFSIMU;
-  buffer_t *ptr=&bridge->buf[buff_index];
+  // uint64_t buff_index = bridge->next_buf++ % MAX_FD_RFSIMU;
+  // buffer_t *ptr=&bridge->buf[buff_index];
+  buffer_t *ptr = &bridge->buf[0];// substitute subs socket
   ptr->circularBuf = calloc(1, sampleToByte(CirSize, 1));
   if (ptr->circularBuf == NULL) {
     LOG_E(HW, "malloc(%lu) failed\n", sampleToByte(CirSize, 1));
     return -1;
   }
   ptr->circularBufEnd=((char *)ptr->circularBuf)+sampleToByte(CirSize,1);
-  ptr->conn_sock=sock;
+  ptr->pub_sock = bridge->pub_sock;
+  ptr->sub_sock = bridge->sub_sock; // temporary duplicating data for testing purposes
+  ptr->fd_pub_sock = bridge->fd_pub_sock;
+  ptr->fd_sub_sock = bridge->fd_pub_sock;
   ptr->lastReceivedTS=0;
   ptr->headerMode=true;
   ptr->trashingPacket=false;
   ptr->transferPtr=(char *)&ptr->th;
   ptr->remainToTransfer=sizeof(samplesBlockHeader_t);
   int sendbuff = SEND_BUFF_SIZE;
-  if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sendbuff, sizeof(sendbuff)) != 0) {
-    LOG_E(HW, "setsockopt(SO_SNDBUF) failed\n");
-    return -1;
-  }
-  struct epoll_event ev= {0};
-  ev.events = EPOLLIN | EPOLLRDHUP;
-  ev.data.fd = sock;
-  if (epoll_ctl(bridge->epollfd, EPOLL_CTL_ADD, sock, &ev) != 0) {
-    LOG_E(HW, "epoll_ctl(EPOLL_CTL_ADD) failed\n");
-    return -1;
-  }
+
+  size_t optlen = sizeof(sendbuff);
+  int rc = zmq_setsockopt(ptr->pub_sock, ZMQ_SNDBUF, &sendbuff, optlen);
+  AssertFatal(rc == 0, "Failed to set ZMQ_SNDBUF on publisher socket");
+
+  // Set the receive buffer size for the subscriber socket
+  rc = zmq_setsockopt(ptr->sub_sock, ZMQ_RCVBUF, &sendbuff, optlen);
+  AssertFatal(rc == 0, "Failed to set ZMQ_RCVBUF on subscriber socket");
+  // Polling the sub socket
+  zmq_pollitem_t pollitem = {ptr->sub_sock, 0, ZMQ_POLLIN, 0};
+  bridge->pollitems = pollitem;
 
   if ( bridge->channelmod > 0) {
     // create channel simulation model for this mode reception
@@ -268,7 +291,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
     random_channel(ptr->channel_model,false);
     LOG_I(HW, "Random channel %s in rfsimulator activated\n", modelname);
   }
-  add_buff_to_socket_mapping(bridge, sock, buff_index);
+  // add_buff_to_socket_mapping(bridge, sock, buff_index);
   return 0;
 }
 
@@ -589,73 +612,111 @@ static int rfsimu_vtime_cmd(char *buff, int debug, telnet_printfunc_t prnt, void
 
 static int startServer(openair0_device *device)
 {
-  int sock = -1;
-  struct addrinfo *results = NULL;
-  struct addrinfo *rp= NULL;
-
   rfsimulator_state_t *t = (rfsimulator_state_t *)device->priv;
   t->role = SIMU_ROLE_SERVER;
-
-  char port[6];
-  snprintf(port, sizeof(port), "%d", t->port);
-
-  struct addrinfo hints = {
-   .ai_family = AF_INET6,
-   .ai_socktype = SOCK_STREAM,
-   .ai_flags = AI_PASSIVE,
-  };
-
-  int s = getaddrinfo(NULL, port, &hints, &results);
-  if (s != 0) {
-    LOG_E(HW, "getaddrinfo: %s\n", gai_strerror(s));
-    freeaddrinfo(results);
-    return -1;
+  if (!t->context) {
+    t->context = zmq_ctx_new();
+    AssertFatal(t->context != NULL, "Failed to create ZeroMQ context");
   }
 
-  int enable = 1;
-  int disable = 0;
-  for (rp = results; rp != NULL; rp = rp->ai_next) {
-    sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if (sock == -1) {
-      continue;
+  // Create and connect the publisher socket (uplink to broker)
+  t->pub_sock = zmq_socket(t->context, ZMQ_PUB);
+  AssertFatal(t->pub_sock != NULL, "Failed to create publisher socket");
+
+  // Set up monitoring for publisher socket
+  int rc = zmq_socket_monitor(t->pub_sock, "inproc://monitor.pub", ZMQ_EVENT_ALL);
+  AssertFatal(rc == 0, "Failed to set up socket monitoring for publisher");
+
+  void *pub_monitor = zmq_socket(t->context, ZMQ_PAIR);
+  AssertFatal(pub_monitor != NULL, "Failed to create publisher monitor socket");
+  rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
+  AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
+
+  // Create and connect the subscriber socket (downlink from broker)
+  t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
+  AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
+
+  // Set up monitoring for subscriber socket
+  rc = zmq_socket_monitor(t->sub_sock, "inproc://monitor.sub", ZMQ_EVENT_ALL);
+  AssertFatal(rc == 0, "Failed to set up socket monitoring for subscriber");
+
+  void *sub_monitor = zmq_socket(t->context, ZMQ_PAIR);
+  AssertFatal(sub_monitor != NULL, "Failed to create subscriber monitor socket");
+  rc = zmq_connect(sub_monitor, "inproc://monitor.sub");
+  AssertFatal(rc == 0, "Failed to connect subscriber monitor socket");
+
+  // Connect the sockets to the broker
+  char pub_endpoint[256];
+  snprintf(pub_endpoint, sizeof(pub_endpoint), "tcp://%s:%d", t->brokerip, t->xsubport);
+  rc = zmq_connect(t->pub_sock, pub_endpoint);
+  AssertFatal(rc == 0, "Failed to connect publisher socket");
+
+  char sub_endpoint[256];
+  snprintf(sub_endpoint, sizeof(sub_endpoint), "tcp://%s:%d", t->brokerip, t->xpubport);
+  rc = zmq_connect(t->sub_sock, sub_endpoint);
+  AssertFatal(rc == 0, "Failed to connect subscriber socket");
+
+  // Subscribe to the downlink topic
+  const char *topic = "uplink";
+  rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
+  AssertFatal(rc == 0, "Failed to subscribe to topic");
+  size_t fd_size = sizeof(t->fd_pub_sock);
+  rc = zmq_getsockopt(t->pub_sock, ZMQ_FD, &t->fd_pub_sock, &fd_size);
+  AssertFatal(rc == 0, "Cannot get fd for pub_sock");
+  rc = zmq_getsockopt(t->sub_sock, ZMQ_FD, &t->fd_sub_sock, &fd_size);
+  AssertFatal(rc == 0, "Cannot get fd for sub_sock");
+
+  // Monitor the sockets to detect when they are connected
+  bool pub_connected = false;
+  bool sub_connected = false;
+
+  while (!pub_connected || !sub_connected) {
+    // Process events for publisher
+    zmq_msg_t event_msg;
+    zmq_msg_init(&event_msg);
+    rc = zmq_msg_recv(&event_msg, pub_monitor, ZMQ_DONTWAIT);
+    if (rc != -1) {
+      uint16_t event = *(uint16_t *)zmq_msg_data(&event_msg);
+      zmq_msg_close(&event_msg);
+
+      if (event == ZMQ_EVENT_CONNECTED) {
+        LOG_I(HW, "Publisher socket connected \n");
+        pub_connected = true;
+      }
+    } else {
+      zmq_msg_close(&event_msg);
     }
 
-    if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &disable, sizeof(int)) != 0) {
-      continue;
+    // Process events for subscriber
+    zmq_msg_init(&event_msg);
+    rc = zmq_msg_recv(&event_msg, sub_monitor, ZMQ_DONTWAIT);
+    if (rc != -1) {
+      uint16_t event = *(uint16_t *)zmq_msg_data(&event_msg);
+      zmq_msg_close(&event_msg);
+
+      if (event == ZMQ_EVENT_CONNECTED) {
+        LOG_I(HW, "Subscriber socket connected \n");
+        sub_connected = true;
+      }
+    } else {
+      zmq_msg_close(&event_msg);
     }
 
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) != 0) {
-      continue;
-    }
-
-    if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
-      break;
-    }
-
-    close(sock);
-    sock = -1;
+    
+    sleep(1);
   }
 
-  freeaddrinfo(results);
+  LOG_I(HW, "rfsimulator: connection established\n");
+  zmq_close(pub_monitor);
+  zmq_close(sub_monitor);
+  // Allocate circular buffer or any other resources needed
+  allocCirBuf(t, t->fd_sub_sock);
+  LOG_I(HW, "rfsimulator: StartServer Ends\n");
 
-  if (sock <= 0) {
-    LOG_E(HW, "could not open a socket\n");
-    return -1;
-  }
-  t->listen_sock = sock;
+  AssertFatal(false, "error StartServer\n");
 
-  if (listen(t->listen_sock, 5) != 0) {
-    LOG_E(HW, "listen() failed, errno(%d)\n", errno);
-    return -1;
-  }
-  struct epoll_event ev = {0};
-  ev.events = EPOLLIN;
-  ev.data.fd = t->listen_sock;
-  if (epoll_ctl(t->epollfd, EPOLL_CTL_ADD, t->listen_sock, &ev) != 0) {
-    LOG_E(HW, "epoll_ctl(EPOLL_CTL_ADD) failed, errno(%d)\n", errno);
-    return -1;
-  }
   return 0;
+
 }
 
 static int client_try_connect(const char *host, uint16_t port)
@@ -701,25 +762,108 @@ static int startClient(openair0_device *device)
 {
   rfsimulator_state_t *t = device->priv;
   t->role = SIMU_ROLE_CLIENT;
-  int sock;
+  if (!t->context) {
+    t->context = zmq_ctx_new();
+    AssertFatal(t->context != NULL, "Failed to create ZeroMQ context");
+  }
 
-  while (true) {
-    LOG_I(HW, "Trying to connect to %s:%d\n", t->ip, t->port);
-    sock = client_try_connect(t->ip, t->port);
+  // Create and connect the publisher socket (uplink to broker)
+  t->pub_sock = zmq_socket(t->context, ZMQ_PUB);
+  AssertFatal(t->pub_sock != NULL, "Failed to create publisher socket");
 
-    if (sock > 0) {
-      LOG_I(HW, "Connection to %s:%d established\n", t->ip, t->port);
-      break;
+  // Set up monitoring for publisher socket
+  int rc = zmq_socket_monitor(t->pub_sock, "inproc://monitor.pub", ZMQ_EVENT_ALL);
+  AssertFatal(rc == 0, "Failed to set up socket monitoring for publisher");
+
+  void *pub_monitor = zmq_socket(t->context, ZMQ_PAIR);
+  AssertFatal(pub_monitor != NULL, "Failed to create publisher monitor socket");
+  rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
+  AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
+
+  // Create and connect the subscriber socket (downlink from broker)
+  t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
+  AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
+
+  // Set up monitoring for subscriber socket
+  rc = zmq_socket_monitor(t->sub_sock, "inproc://monitor.sub", ZMQ_EVENT_ALL);
+  AssertFatal(rc == 0, "Failed to set up socket monitoring for subscriber");
+
+  void *sub_monitor = zmq_socket(t->context, ZMQ_PAIR);
+  AssertFatal(sub_monitor != NULL, "Failed to create subscriber monitor socket");
+  rc = zmq_connect(sub_monitor, "inproc://monitor.sub");
+  AssertFatal(rc == 0, "Failed to connect subscriber monitor socket");
+
+  // Connect the sockets to the broker
+  char pub_endpoint[256];
+  snprintf(pub_endpoint, sizeof(pub_endpoint), "tcp://%s:%d", t->brokerip, t->xsubport);
+  rc = zmq_connect(t->pub_sock, pub_endpoint);
+  AssertFatal(rc == 0, "Failed to connect publisher socket");
+
+  char sub_endpoint[256];
+  snprintf(sub_endpoint, sizeof(sub_endpoint), "tcp://%s:%d", t->brokerip, t->xpubport);
+  rc = zmq_connect(t->sub_sock, sub_endpoint);
+  AssertFatal(rc == 0, "Failed to connect subscriber socket");
+
+  // Subscribe to the downlink topic
+  const char *topic = "downlink";
+  rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
+  AssertFatal(rc == 0, "Failed to subscribe to topic");
+  size_t fd_size = sizeof(t->fd_pub_sock);
+  rc = zmq_getsockopt(t->pub_sock, ZMQ_FD, &t->fd_pub_sock, &fd_size);
+  AssertFatal(rc == 0, "Cannot get fd for pub_sock");
+  rc = zmq_getsockopt(t->sub_sock, ZMQ_FD, &t->fd_sub_sock, &fd_size);
+  AssertFatal(rc == 0, "Cannot get fd for sub_sock");
+
+  // Monitor the sockets to detect when they are connected
+  bool pub_connected = false;
+  bool sub_connected = false;
+
+  while (!pub_connected || !sub_connected) {
+    // Process events for publisher
+    zmq_msg_t event_msg;
+    zmq_msg_init(&event_msg);
+    rc = zmq_msg_recv(&event_msg, pub_monitor, ZMQ_DONTWAIT);
+    if (rc != -1) {
+      uint16_t event = *(uint16_t *)zmq_msg_data(&event_msg);
+      zmq_msg_close(&event_msg);
+
+      if (event == ZMQ_EVENT_CONNECTED) {
+        LOG_I(HW, "Publisher socket connected");
+        pub_connected = true;
+      }
+    } else {
+      zmq_msg_close(&event_msg);
     }
 
-    LOG_I(HW, "connect() to %s:%d failed, errno(%d)\n", t->ip, t->port, errno);
-    sleep(1);
+    // Process events for subscriber
+    zmq_msg_init(&event_msg);
+    rc = zmq_msg_recv(&event_msg, sub_monitor, ZMQ_DONTWAIT);
+    if (rc != -1) {
+      uint16_t event = *(uint16_t *)zmq_msg_data(&event_msg);
+      zmq_msg_close(&event_msg);
+
+      if (event == ZMQ_EVENT_CONNECTED) {
+        LOG_I(HW, "Subscriber socket connected");
+        sub_connected = true;
+      }
+    } else {
+      zmq_msg_close(&event_msg);
+    }
+
+    sleep(1); 
   }
 
-  if (setblocking(sock, notBlocking) == -1) {
-    return -1;
-  }
-  return allocCirBuf(t, sock);
+  LOG_I(HW, "rfsimulator: connection established\n");
+  zmq_close(pub_monitor);
+  zmq_close(sub_monitor);
+
+  allocCirBuf(t, t->fd_sub_sock);
+  LOG_I(HW, "rfsimulator: Start Client Ends\n");
+
+  AssertFatal(false, "error StartClient\n");
+
+  return 0;
+
 }
 
 static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked) {
@@ -1149,12 +1293,14 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   device->priv = rfsimulator;
   device->trx_write_init = rfsimulator_write_init;
 
-  for (int i = 0; i < MAX_FD_RFSIMU; i++)
-    rfsimulator->buf[i].conn_sock=-1;
-  rfsimulator->next_buf = 0;
-  rfsimulator->fd_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
+  // for (int i = 0; i < MAX_FD_RFSIMU; i++)
+  //   rfsimulator->buf[i].conn_sock=-1;
+  // rfsimulator->next_buf = 0;
+  // rfsimulator->fd_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
+  rfsimulator->buf[0].fd_sub_sock = -1;
 
-  AssertFatal((rfsimulator->epollfd = epoll_create1(0)) != -1, "epoll_create1() failed, errno(%d)", errno);
+  // AssertFatal((rfsimulator->epollfd = epoll_create1(0)) != -1, "epoll_create1() failed, errno(%d)", errno);
+
   // we need to call randominit() for telnet server (use gaussdouble=>uniformrand)
   randominit(0);
   set_taus_seed(0);
