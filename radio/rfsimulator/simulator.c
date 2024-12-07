@@ -672,6 +672,7 @@ static int startServer(openair0_device *device)
 
   while (!pub_connected || !sub_connected) {
     // Process events for publisher
+    printf("trying to connect to the broker\n");
     zmq_msg_t event_msg;
     zmq_msg_init(&event_msg);
     rc = zmq_msg_recv(&event_msg, pub_monitor, ZMQ_DONTWAIT);
@@ -703,7 +704,7 @@ static int startServer(openair0_device *device)
     }
 
     
-    sleep(1);
+    usleep(10000); 
   }
 
   LOG_I(HW, "rfsimulator: connection established\n");
@@ -799,6 +800,8 @@ static int startClient(openair0_device *device)
   rc = zmq_connect(t->pub_sock, pub_endpoint);
   AssertFatal(rc == 0, "Failed to connect publisher socket");
 
+  printf("connecting to endpoint: %s\n",pub_endpoint);
+
   char sub_endpoint[256];
   snprintf(sub_endpoint, sizeof(sub_endpoint), "tcp://%s:%d", t->brokerip, t->xpubport);
   rc = zmq_connect(t->sub_sock, sub_endpoint);
@@ -820,6 +823,7 @@ static int startClient(openair0_device *device)
 
   while (!pub_connected || !sub_connected) {
     // Process events for publisher
+    printf("trying to connect to the broker\n");
     zmq_msg_t event_msg;
     zmq_msg_init(&event_msg);
     rc = zmq_msg_recv(&event_msg, pub_monitor, ZMQ_DONTWAIT);
@@ -850,7 +854,7 @@ static int startClient(openair0_device *device)
       zmq_msg_close(&event_msg);
     }
 
-    sleep(1); 
+    usleep(10000); 
   }
 
   LOG_I(HW, "rfsimulator: connection established\n");
