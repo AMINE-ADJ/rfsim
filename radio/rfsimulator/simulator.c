@@ -202,7 +202,7 @@ typedef struct {
   poll_telnetcmdq_func_t poll_telnetcmdq;
   int wait_timeout;
   double prop_delay_ms;
-  zmq_pollitem_t pollitems;
+  zmq_pollitem_t pollitems[];
 } rfsimulator_state_t;
 
 static buffer_t *get_buff_from_socket(rfsimulator_state_t *simulator_state, int socket)
@@ -263,7 +263,9 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
   AssertFatal(rc == 0, "Failed to set ZMQ_RCVBUF on subscriber socket");
   // Polling the sub socket
   zmq_pollitem_t pollitem = {ptr->sub_sock, 0, ZMQ_POLLIN, 0};
-  bridge->pollitems = pollitem;
+  bridge->pollitems[0] = pollitem;
+  LOG_I(HW, "Mchat\n");
+
 
   if ( bridge->channelmod > 0) {
     // create channel simulation model for this mode reception
@@ -942,12 +944,24 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   // store the data in lists
   LOG_I(HW, "FlushInput Starts \n");
 
+  // if ( t->role == SIMU_ROLE_SERVER ) { 
+  //   LOG_I(HW, "Sending the current time\n");
+  //         c16_t v= {0};
+  //         nb_ue++;
+  //         void *samplesVoid[t->tx_num_channels];
+
+  //         for ( int i=0; i < t->tx_num_channels; i++)
+  //           samplesVoid[i]=(void *)&v;
+
+  //         rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+
+  //         buffer_t *b = &t->buf[0];
+  //         if (b->channel_model)
+  //           b->channel_model->start_TS = t->lastWroteTS;
+  //   }
   // struct epoll_event events[MAX_FD_RFSIMU] = {{0}};
 
-  zmq_pollitem_t items[] = {
-    {t->sub_sock, 0, ZMQ_POLLIN, 0}
-  };
-  int rc = zmq_poll(items, 1, timeout);
+  int rc = zmq_poll(t->pollitems, 1, timeout);
   
   // int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
 
@@ -965,23 +979,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   }
 
 
-  // if ( t->role == SIMU_ROLE_SERVER ) { 
-  // LOG_I(HW, "Sending the current time\n");
-  //       c16_t v= {0};
-  //       nb_ue++;
-  //       void *samplesVoid[t->tx_num_channels];
-
-  //       for ( int i=0; i < t->tx_num_channels; i++)
-  //         samplesVoid[i]=(void *)&v;
-
-  //       rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
-
-  //       buffer_t *b = &t->buf[0];
-  //       if (b->channel_model)
-  //         b->channel_model->start_TS = t->lastWroteTS;
-  // }
-
-  if (items[0].revents & ZMQ_POLLIN) {
+  if (t->pollitems[0].revents & ZMQ_POLLIN) {
 
       buffer_t *b =  &t->buf[0];
       if ( b->circularBuf == NULL ) {
