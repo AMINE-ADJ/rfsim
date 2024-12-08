@@ -961,8 +961,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   //           b->channel_model->start_TS = t->lastWroteTS;
   //   }
   // struct epoll_event events[MAX_FD_RFSIMU] = {{0}};
-
-  int rc = zmq_poll(t->pollitems, 1, timeout);
+  zmq_pollitem_t * items = t->pollitems;
+  int rc = zmq_poll(items, 1, timeout);
   
   // int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
 
@@ -980,7 +980,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   }
 
 
-  if (t->pollitems[0].revents & ZMQ_POLLIN) {
+  if (items[0].revents & ZMQ_POLLIN) {
 
       buffer_t *b =  &t->buf[0];
       if ( b->circularBuf == NULL ) {
@@ -1006,7 +1006,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         }
       } else if ( sz == 0 )
         // continue;
-
+   if (sz > 0 ) {
       LOG_D(HW, "Socket rcv %zd bytes\n", sz);
       b->remainToTransfer -= sz;
       b->transferPtr+=sz;
@@ -1078,6 +1078,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           b->trashingPacket=false;
         }
       }
+    }
+      
     }
   // }
   LOG_I(HW, "FlushInput Ends \n");
