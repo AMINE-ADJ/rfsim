@@ -358,6 +358,9 @@ static int setblocking(int sock, enum blocking_t active)
 
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps);
 
+static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked);
+
+
 static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_state_t *t) {
   if (t->saveIQfile != -1) {
     if (write(t->saveIQfile, _buf, count) != count )
@@ -400,7 +403,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
     count -= l;
     buf += l;
   }
-  LOG_I(HW,"fullwrite ends\n");
+  // LOG_I(HW,"fullwrite ends\n");
 }
 
 static void rfsimulator_readconfig(rfsimulator_state_t *rfsimulator) {
@@ -726,6 +729,24 @@ static int startServer(openair0_device *device)
   zmq_close(sub_monitor);
   // Allocate circular buffer or any other resources needed
   allocCirBuf(t, t->fd_sub_sock);
+
+
+// Sending Current time only one time.
+
+  c16_t v= {0};
+  nb_ue++;
+  void *samplesVoid[t->tx_num_channels];
+
+  for ( int i=0; i < t->tx_num_channels; i++)
+    samplesVoid[i]=(void *)&v;
+
+  rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+
+  buffer_t *b = &t->buf[0];
+  if (b->channel_model)
+    b->channel_model->start_TS = t->lastWroteTS;
+
+
   LOG_I(HW, "rfsimulator: StartServer Ends\n");
 
   // AssertFatal(false, "error StartServer\n");
@@ -952,24 +973,24 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on sockets
   // store the data in lists
-  LOG_I(HW, "FlushInput Starts \n");
+  // LOG_I(HW, "FlushInput Starts \n");
   
 
-  if ( t->role == SIMU_ROLE_SERVER ) { 
-    LOG_I(HW, "Sending the current time\n");
-          c16_t v= {0};
-          nb_ue++;
-          void *samplesVoid[t->tx_num_channels];
+  // if ( t->role == SIMU_ROLE_SERVER ) { 
+  //   // LOG_I(HW, "Sending the current time\n");
+  //         c16_t v= {0};
+  //         nb_ue++;
+  //         void *samplesVoid[t->tx_num_channels];
 
-          for ( int i=0; i < t->tx_num_channels; i++)
-            samplesVoid[i]=(void *)&v;
+  //         for ( int i=0; i < t->tx_num_channels; i++)
+  //           samplesVoid[i]=(void *)&v;
 
-          rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+  //         rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
 
-          buffer_t *b = &t->buf[0];
-          if (b->channel_model)
-            b->channel_model->start_TS = t->lastWroteTS;
-    }
+  //         buffer_t *b = &t->buf[0];
+  //         if (b->channel_model)
+  //           b->channel_model->start_TS = t->lastWroteTS;
+  //   }
 
   zmq_pollitem_t * items = t->pollitems;
   int rc = zmq_poll(items, 1, timeout);
@@ -1092,7 +1113,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       
     }
   // }
-  LOG_I(HW, "FlushInput Ends \n");
+  // LOG_I(HW, "FlushInput Ends \n");
 
   // AssertFatal(false, "rfsimulator: flushInput Ends successfully !");
   return rc > 0; //true
@@ -1101,7 +1122,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimestamp, void **samplesVoid, int nsamps, int nbAnt)
 {
   rfsimulator_state_t *t = device->priv;
-  LOG_I(HW, "Enter rfsimulator_read, expect %d samples, will release at TS: %ld, nbAnt %d\n", nsamps, t->nextRxTstamp+nsamps, nbAnt);
+  LOG_D(HW, "Enter rfsimulator_read, expect %d samples, will release at TS: %ld, nbAnt %d\n", nsamps, t->nextRxTstamp+nsamps, nbAnt);
 
   // deliver data from received data
   // check if a UE is connected

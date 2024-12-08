@@ -330,6 +330,7 @@ static int setblocking(int sock, enum blocking_t active)
 
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps);
 
+
 static void fullwrite(int fd, void *_buf, ssize_t count, rfsimulator_state_t *t) {
   if (t->saveIQfile != -1) {
     if (write(t->saveIQfile, _buf, count) != count )
