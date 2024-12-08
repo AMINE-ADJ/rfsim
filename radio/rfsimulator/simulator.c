@@ -997,7 +997,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
                  b->circularBufEnd - b->transferPtr ;
 
 
-      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, (size_t) blockSz, ZMQ_DONTWAIT);
+      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
 
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
