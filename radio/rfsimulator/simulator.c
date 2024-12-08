@@ -264,7 +264,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
   // Polling the sub socket
   zmq_pollitem_t pollitem = {ptr->sub_sock, 0, ZMQ_POLLIN, 0};
   bridge->pollitems[0] = pollitem;
-  LOG_I(HW, "Mchat\n");
+  // LOG_I(HW, "\n");
 
 
   if ( bridge->channelmod > 0) {
@@ -298,20 +298,22 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
   return 0;
 }
 
-static void removeCirBuf(rfsimulator_state_t *bridge, int sock) {
-  if (epoll_ctl(bridge->epollfd, EPOLL_CTL_DEL, sock, NULL) != 0) {
-    LOG_E(HW, "epoll_ctl(EPOLL_CTL_DEL) failed\n");
-  }
-  close(sock);
-  buffer_t* buf = get_buff_from_socket(bridge, sock);
+static void removeCirBuf(rfsimulator_state_t *bridge, int sub_sock) {
+  // if (epoll_ctl(bridge->epollfd, EPOLL_CTL_DEL, sock, NULL) != 0) {
+  //   LOG_E(HW, "epoll_ctl(EPOLL_CTL_DEL) failed\n");
+  // }
+  // close(sock);
+  zmq_close(bridge->pub_sock);
+  zmq_close(bridge->sub_sock);
+  buffer_t* buf = &bridge->buf[0];
   if (buf) {
     free(buf->circularBuf);
     // Fixme: no free_channel_desc_scm(bridge->buf[sock].channel_model) implemented
     // a lot of mem leaks
     //free(bridge->buf[sock].channel_model);
     memset(buf, 0, sizeof(buffer_t));
-    buf->conn_sock=-1;
-    remove_buff_to_socket_mapping(bridge, sock);
+    buf->fd_pub_sock=-1;
+    buf->fd_sub_sock=-1;
     nb_ue--;
   }
 }
@@ -356,7 +358,7 @@ static int setblocking(int sock, enum blocking_t active)
 
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps);
 
-static void fullwrite(int fd, void *_buf, ssize_t count, rfsimulator_state_t *t) {
+static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_state_t *t) {
   if (t->saveIQfile != -1) {
     if (write(t->saveIQfile, _buf, count) != count )
       LOG_E(HW, "write() in save iq file failed (%d)\n", errno);
@@ -364,9 +366,17 @@ static void fullwrite(int fd, void *_buf, ssize_t count, rfsimulator_state_t *t)
 
   char *buf = _buf;
   ssize_t l;
+  if (t->role == SIMU_ROLE_SERVER){
+    char topic[] = "downlink";
+    zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
+  }
+  else {
+    char topic[] = "uplink";
+    zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
+  }
 
   while (count) {
-    l = write(fd, buf, count);
+    l = zmq_send(pub_sock, buf, count, ZMQ_DONTWAIT);
 
     if (l == 0) {
         LOG_E(HW, "write() failed, returned 0\n");
@@ -390,6 +400,7 @@ static void fullwrite(int fd, void *_buf, ssize_t count, rfsimulator_state_t *t)
     count -= l;
     buf += l;
   }
+  LOG_I(HW,"fullwrite ends\n");
 }
 
 static void rfsimulator_readconfig(rfsimulator_state_t *rfsimulator) {
@@ -879,29 +890,27 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
 
   LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
 
-  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-    buffer_t *b=&t->buf[i];
+  buffer_t *b=&t->buf[0];
 
-    if (b->conn_sock >= 0 ) {
-      samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
-      fullwrite(b->conn_sock,&header, sizeof(header), t);
-      sample_t tmpSamples[nsamps][nbAnt];
+  if (b->pub_sock != NULL ) {
+    samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
+    fullwrite(b->pub_sock,&header, sizeof(header), t);
+    sample_t tmpSamples[nsamps][nbAnt];
 
-      if (nbAnt == 1) {
-        if (b->conn_sock >= 0) {
-          fullwrite(b->conn_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
-        }
-      } else {
-        for (int a = 0; a < nbAnt; a++) {
-          sample_t *in = (sample_t *)samplesVoid[a];
+    if (nbAnt == 1) {
+      if (b->pub_sock != NULL) {
+        fullwrite(b->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
+      }
+    } else {
+      for (int a = 0; a < nbAnt; a++) {
+        sample_t *in = (sample_t *)samplesVoid[a];
 
-          for (int s = 0; s < nsamps; s++)
-            tmpSamples[s][a] = in[s];
-        }
+        for (int s = 0; s < nsamps; s++)
+          tmpSamples[s][a] = in[s];
+      }
 
-        if (b->conn_sock >= 0) {
-          fullwrite(b->conn_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
-        }
+      if (b->pub_sock != NULL) {
+        fullwrite(b->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
       }
     }
   }
@@ -930,6 +939,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
         timestamp,
         timestamp + nsamps,
         signal_energy(samplesVoid[0], nsamps));
+  // AssertFatal(false, "rfsim write internal ends successfuly\n");
   return nsamps;
 }
 
@@ -943,24 +953,24 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   // Process all incoming events on sockets
   // store the data in lists
   LOG_I(HW, "FlushInput Starts \n");
-  //
+  
 
-  // if ( t->role == SIMU_ROLE_SERVER ) { 
-  //   LOG_I(HW, "Sending the current time\n");
-  //         c16_t v= {0};
-  //         nb_ue++;
-  //         void *samplesVoid[t->tx_num_channels];
+  if ( t->role == SIMU_ROLE_SERVER ) { 
+    LOG_I(HW, "Sending the current time\n");
+          c16_t v= {0};
+          nb_ue++;
+          void *samplesVoid[t->tx_num_channels];
 
-  //         for ( int i=0; i < t->tx_num_channels; i++)
-  //           samplesVoid[i]=(void *)&v;
+          for ( int i=0; i < t->tx_num_channels; i++)
+            samplesVoid[i]=(void *)&v;
 
-  //         rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+          rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
 
-  //         buffer_t *b = &t->buf[0];
-  //         if (b->channel_model)
-  //           b->channel_model->start_TS = t->lastWroteTS;
-  //   }
-  // struct epoll_event events[MAX_FD_RFSIMU] = {{0}};
+          buffer_t *b = &t->buf[0];
+          if (b->channel_model)
+            b->channel_model->start_TS = t->lastWroteTS;
+    }
+
   zmq_pollitem_t * items = t->pollitems;
   int rc = zmq_poll(items, 1, timeout);
   
@@ -1084,7 +1094,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   // }
   LOG_I(HW, "FlushInput Ends \n");
 
-  AssertFatal(false, "rfsimulator: flushInput Ends successfully !");
+  // AssertFatal(false, "rfsimulator: flushInput Ends successfully !");
   return rc > 0; //true
 }
 
@@ -1213,7 +1223,7 @@ static void rfsimulator_end(openair0_device *device) {
   for (int i = 0; i < MAX_FD_RFSIMU; i++) {
     buffer_t *b = &s->buf[i];
     if (b->conn_sock >= 0 )
-      removeCirBuf(s, b->conn_sock);
+      removeCirBuf(s, b->fd_sub_sock);
   }
   close(s->epollfd);
   hashtable_destroy(&s->fd_to_buf_map);
