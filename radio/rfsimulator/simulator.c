@@ -943,6 +943,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   // Process all incoming events on sockets
   // store the data in lists
   LOG_I(HW, "FlushInput Starts \n");
+  //
 
   // if ( t->role == SIMU_ROLE_SERVER ) { 
   //   LOG_I(HW, "Sending the current time\n");
