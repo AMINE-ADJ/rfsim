@@ -399,6 +399,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
         return;
       }
     }
+    LOG_I(NR_PHY, "Successfully sent %d bytes.\n", l);
 
     count -= l;
     buf += l;
@@ -897,6 +898,8 @@ static int startClient(openair0_device *device)
   zmq_close(sub_monitor);
 
   allocCirBuf(t, t->fd_sub_sock);
+
+
   LOG_I(HW, "rfsimulator: Start Client Ends\n");
 
   // AssertFatal(false, "error StartClient\n");
@@ -909,7 +912,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
   if (!alreadyLocked)
     pthread_mutex_lock(&Sockmutex);
 
-  LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
+  LOG_I(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
 
   buffer_t *b=&t->buf[0];
 
@@ -992,9 +995,16 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   //           b->channel_model->start_TS = t->lastWroteTS;
   //   }
 
+
+
   zmq_pollitem_t * items = t->pollitems;
-  int rc = zmq_poll(items, 1, timeout);
-  
+
+  // LOG_I(NR_PHY, "Blocking device to read event \n");
+  // int rc = zmq_poll(items, 1, -1);
+
+  int rc = zmq_poll(items, 1, 1000*timeout);
+  LOG_I(NR_PHY, "rc of zmq_poll = %d. \n", rc);
+
   // int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
 
     if (rc < 0) {
@@ -1012,6 +1022,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
 
   if (items[0].revents & ZMQ_POLLIN) {
+    LOG_I(HW,"Reading data from sub socket..\n");
 
       buffer_t *b =  &t->buf[0];
       if ( b->circularBuf == NULL ) {
@@ -1029,7 +1040,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
 
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
-
+      LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
           LOG_E(HW, "recv() failed, errno(%d)\n", errno);
@@ -1038,7 +1049,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       } else if ( sz == 0 )
         // continue;
    if (sz > 0 ) {
-      LOG_D(HW, "Socket rcv %zd bytes\n", sz);
+      LOG_I(HW, "Socket rcv %zd bytes\n", sz);
       b->remainToTransfer -= sz;
       b->transferPtr+=sz;
 
@@ -1050,13 +1061,14 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         b->headerMode = false;
 
         if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
+        LOG_I(HW, "Client handling current time\n");
           t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
                            b->th.timestamp -  nsamps_for_initial :
                            0;
           b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
                             b->th.timestamp :
                             nsamps_for_initial;
-          LOG_D(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
+          LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
           b->trashingPacket=true;
           if (b->channel_model)
             b->channel_model->start_TS = t->nextRxTstamp;
@@ -1150,7 +1162,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       }
 
       if (have_to_wait) {
-        LOG_D(HW,
+        LOG_I(HW,
               "Waiting on socket, current last ts: %ld, expected at least : %ld\n",
               b->lastReceivedTS,
               t->nextRxTstamp + nsamps);
