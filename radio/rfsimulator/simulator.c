@@ -369,6 +369,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
 
   char *buf = _buf;
   ssize_t l;
+  //Sending topic
   if (t->role == SIMU_ROLE_SERVER){
     char topic[] = "downlink";
     zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
@@ -378,6 +379,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
     zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
   }
 
+  //Sending Data
   while (count) {
     l = zmq_send(pub_sock, buf, count, ZMQ_DONTWAIT);
 
@@ -900,6 +902,7 @@ static int startClient(openair0_device *device)
   allocCirBuf(t, t->fd_sub_sock);
 
 
+
   LOG_I(HW, "rfsimulator: Start Client Ends\n");
 
   // AssertFatal(false, "error StartClient\n");
@@ -1002,7 +1005,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   // LOG_I(NR_PHY, "Blocking device to read event \n");
   // int rc = zmq_poll(items, 1, -1);
 
-  int rc = zmq_poll(items, 1, 1000*timeout);
+  int rc = zmq_poll(items, 1, timeout);
   LOG_I(NR_PHY, "rc of zmq_poll = %d. \n", rc);
 
   // int nfds = epoll_wait(t->epollfd, events, MAX_FD_RFSIMU, timeout);
@@ -1038,17 +1041,24 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
                  b->remainToTransfer :
                  b->circularBufEnd - b->transferPtr ;
 
-
+      //receiving topic 
+      char topic[256] = {0};
+      //receiving data ( iq samples )
+      zmq_recv(t->sub_sock, topic,sizeof(topic) , 0);
+      topic[sizeof(topic) - 1] = '\0';
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
-      LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
+      // LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
+      LOG_I(HW, "Received on topic %s , nbr %zd bytes", topic, sz);
+
       if ( sz < 0 ) {
+        LOG_I(HW, "Sz < 0");
         if ( errno != EAGAIN ) {
           LOG_E(HW, "recv() failed, errno(%d)\n", errno);
           //abort();
         }
-      } else if ( sz == 0 )
+      }
         // continue;
-   if (sz > 0 ) {
+  //  if (sz > 0 ) {
       LOG_I(HW, "Socket rcv %zd bytes\n", sz);
       b->remainToTransfer -= sz;
       b->transferPtr+=sz;
@@ -1058,6 +1068,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
       // check the header and start block transfer
       if ( b->headerMode==true && b->remainToTransfer==0) {
+        LOG_I(HW, "Actual data reading on this device");
         b->headerMode = false;
 
         if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
@@ -1121,7 +1132,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           b->trashingPacket=false;
         }
       }
-    }
+    // }
       
     }
   // }
