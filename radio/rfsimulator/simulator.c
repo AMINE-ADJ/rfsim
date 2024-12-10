@@ -1048,7 +1048,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       topic[sizeof(topic) - 1] = '\0';
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
       // LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
-      LOG_I(HW, "Received on topic %s , nbr %zd bytes", topic, sz);
+      LOG_I(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
 
       if ( sz < 0 ) {
         LOG_I(HW, "Sz < 0");
@@ -1057,82 +1057,81 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           //abort();
         }
       }
-        // continue;
-  //  if (sz > 0 ) {
-      LOG_I(HW, "Socket rcv %zd bytes\n", sz);
-      b->remainToTransfer -= sz;
-      b->transferPtr+=sz;
+      if (sz > 0 ) {
+          LOG_I(HW, "Socket rcv %zd bytes\n", sz);
+          b->remainToTransfer -= sz;
+          b->transferPtr+=sz;
 
-      if (b->transferPtr==b->circularBufEnd )
-        b->transferPtr=(char *)b->circularBuf;
+          if (b->transferPtr==b->circularBufEnd )
+            b->transferPtr=(char *)b->circularBuf;
 
-      // check the header and start block transfer
-      if ( b->headerMode==true && b->remainToTransfer==0) {
-        LOG_I(HW, "Actual data reading on this device");
-        b->headerMode = false;
+          // check the header and start block transfer
+          if ( b->headerMode==true && b->remainToTransfer==0) {
+            LOG_I(HW, "Actual data reading on this device");
+            b->headerMode = false;
 
-        if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
-        LOG_I(HW, "Client handling current time\n");
-          t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
-                           b->th.timestamp -  nsamps_for_initial :
-                           0;
-          b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
-                            b->th.timestamp :
-                            nsamps_for_initial;
-          LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
-          b->trashingPacket=true;
-          if (b->channel_model)
-            b->channel_model->start_TS = t->nextRxTstamp;
-        } else if (b->lastReceivedTS < b->th.timestamp) {
-          int nbAnt= b->th.nbAnt;
+            if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
+            LOG_I(HW, "Client handling current time\n");
+              t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
+                              b->th.timestamp -  nsamps_for_initial :
+                              0;
+              b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
+                                b->th.timestamp :
+                                nsamps_for_initial;
+              LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
+              b->trashingPacket=true;
+              if (b->channel_model)
+                b->channel_model->start_TS = t->nextRxTstamp;
+            } else if (b->lastReceivedTS < b->th.timestamp) {
+              int nbAnt= b->th.nbAnt;
 
-          if ( b->th.timestamp-b->lastReceivedTS < CirSize ) {
-            for (uint64_t index=b->lastReceivedTS; index < b->th.timestamp; index++ ) {
-              for (int a=0; a < nbAnt; a++) {
-                b->circularBuf[(index*nbAnt+a)%CirSize].r = 0;
-                b->circularBuf[(index*nbAnt+a)%CirSize].i = 0;
+              if ( b->th.timestamp-b->lastReceivedTS < CirSize ) {
+                for (uint64_t index=b->lastReceivedTS; index < b->th.timestamp; index++ ) {
+                  for (int a=0; a < nbAnt; a++) {
+                    b->circularBuf[(index*nbAnt+a)%CirSize].r = 0;
+                    b->circularBuf[(index*nbAnt+a)%CirSize].i = 0;
+                  }
+                }
+              } else {
+                memset(b->circularBuf, 0, sampleToByte(CirSize,1));
               }
+
+              b->lastReceivedTS=b->th.timestamp;
+            } else if (b->lastReceivedTS > b->th.timestamp && b->th.size == 1) {
+              LOG_W(HW, "Received Rx/Tx synchro out of order\n");
+              b->trashingPacket=true;
+            } else if (b->lastReceivedTS == b->th.timestamp) {
+              // normal case
+            } else {
+              LOG_W(HW, "Received data in past: current is %lu, new reception: %lu!\n", b->lastReceivedTS, b->th.timestamp);
+              b->trashingPacket=true;
             }
-          } else {
-            memset(b->circularBuf, 0, sampleToByte(CirSize,1));
+
+            pthread_mutex_lock(&Sockmutex);
+
+            if (t->lastWroteTS != 0 && (fabs((double)t->lastWroteTS-b->lastReceivedTS) > (double)CirSize))
+              LOG_W(HW, "UEsock(sub_sock) Tx/Rx shift too large Tx:%lu, Rx:%lu\n", t->lastWroteTS, b->lastReceivedTS);
+
+            pthread_mutex_unlock(&Sockmutex);
+            b->transferPtr=(char *)&b->circularBuf[(b->lastReceivedTS*b->th.nbAnt)%CirSize];
+            b->remainToTransfer=sampleToByte(b->th.size, b->th.nbAnt);
           }
 
-          b->lastReceivedTS=b->th.timestamp;
-        } else if (b->lastReceivedTS > b->th.timestamp && b->th.size == 1) {
-          LOG_W(HW, "Received Rx/Tx synchro out of order\n");
-          b->trashingPacket=true;
-        } else if (b->lastReceivedTS == b->th.timestamp) {
-          // normal case
-        } else {
-          LOG_W(HW, "Received data in past: current is %lu, new reception: %lu!\n", b->lastReceivedTS, b->th.timestamp);
-          b->trashingPacket=true;
+          if ( b->headerMode==false ) {
+            if ( ! b->trashingPacket ) {
+              b->lastReceivedTS=b->th.timestamp+b->th.size-byteToSample(b->remainToTransfer,b->th.nbAnt);
+              LOG_D(HW, "UEsock: sub_sock Set b->lastReceivedTS %ld\n", b->lastReceivedTS);
+            }
+
+            if ( b->remainToTransfer==0) {
+              LOG_D(HW, "UEsock: sub_sock Completed block reception: %ld\n", b->lastReceivedTS);
+              b->headerMode=true;
+              b->transferPtr=(char *)&b->th;
+              b->remainToTransfer = sizeof(samplesBlockHeader_t);
+              b->trashingPacket=false;
+            }
+          }
         }
-
-        pthread_mutex_lock(&Sockmutex);
-
-        if (t->lastWroteTS != 0 && (fabs((double)t->lastWroteTS-b->lastReceivedTS) > (double)CirSize))
-          LOG_W(HW, "UEsock(sub_sock) Tx/Rx shift too large Tx:%lu, Rx:%lu\n", t->lastWroteTS, b->lastReceivedTS);
-
-        pthread_mutex_unlock(&Sockmutex);
-        b->transferPtr=(char *)&b->circularBuf[(b->lastReceivedTS*b->th.nbAnt)%CirSize];
-        b->remainToTransfer=sampleToByte(b->th.size, b->th.nbAnt);
-      }
-
-      if ( b->headerMode==false ) {
-        if ( ! b->trashingPacket ) {
-          b->lastReceivedTS=b->th.timestamp+b->th.size-byteToSample(b->remainToTransfer,b->th.nbAnt);
-          LOG_D(HW, "UEsock: sub_sock Set b->lastReceivedTS %ld\n", b->lastReceivedTS);
-        }
-
-        if ( b->remainToTransfer==0) {
-          LOG_D(HW, "UEsock: sub_sock Completed block reception: %ld\n", b->lastReceivedTS);
-          b->headerMode=true;
-          b->transferPtr=(char *)&b->th;
-          b->remainToTransfer = sizeof(samplesBlockHeader_t);
-          b->trashingPacket=false;
-        }
-      }
-    // }
       
     }
   // }
