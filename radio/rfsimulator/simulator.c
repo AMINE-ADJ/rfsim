@@ -292,7 +292,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
 
     set_channeldesc_owner(ptr->channel_model, RFSIMU_MODULEID);
     random_channel(ptr->channel_model,false);
-    LOG_I(HW, "Random channel %s in rfsimulator activated\n", modelname);
+    LOG_D(HW, "Random channel %s in rfsimulator activated\n", modelname);
   }
   // add_buff_to_socket_mapping(bridge, sock, buff_index);
   return 0;
@@ -401,7 +401,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
         return;
       }
     }
-    LOG_I(HW, "Successfully sent %d bytes.\n", l);
+    LOG_D(HW, "Successfully sent %d bytes.\n", l);
 
     count -= l;
     buf += l;
@@ -424,7 +424,7 @@ static void rfsimulator_readconfig(rfsimulator_state_t *rfsimulator) {
       rfsimulator->saveIQfile=open(saveF,O_APPEND| O_CREAT|O_TRUNC | O_WRONLY, 0666);
 
       if ( rfsimulator->saveIQfile != -1 )
-        LOG_I(HW, "Will save written IQ samples in %s\n", saveF);
+        LOG_D(HW, "Will save written IQ samples in %s\n", saveF);
       else {
         LOG_E(HW, "open(%s) failed for IQ saving, errno(%d)\n", saveF, errno);
         exit(-1);
@@ -445,7 +445,7 @@ static void rfsimulator_readconfig(rfsimulator_state_t *rfsimulator) {
   if ( getenv("RFSIMULATOR") != NULL ) {
     rfsimulator->ip=getenv("RFSIMULATOR");
     LOG_W(HW, "The RFSIMULATOR environment variable is deprecated and support will be removed in the future. Instead, add parameter --rfsimulator.serveraddr %s to set the server address. Note: the default is \"server\"; for the gNB/eNB, you don't have to set any configuration.\n", rfsimulator->ip);
-    LOG_I(HW, "Remove RFSIMULATOR environment variable to get rid of this message and the sleep.\n");
+    LOG_D(HW, "Remove RFSIMULATOR environment variable to get rid of this message and the sleep.\n");
     sleep(10);
   }
 
@@ -701,7 +701,7 @@ static int startServer(openair0_device *device)
       zmq_msg_close(&event_msg);
 
       if (event == ZMQ_EVENT_CONNECTED) {
-        LOG_I(HW, "Publisher socket connected \n");
+        LOG_D(HW, "Publisher socket connected \n");
         pub_connected = true;
       }
     } else {
@@ -716,7 +716,7 @@ static int startServer(openair0_device *device)
       zmq_msg_close(&event_msg);
 
       if (event == ZMQ_EVENT_CONNECTED) {
-        LOG_I(HW, "Subscriber socket connected \n");
+        LOG_D(HW, "Subscriber socket connected \n");
         sub_connected = true;
       }
     } else {
@@ -727,7 +727,7 @@ static int startServer(openair0_device *device)
     usleep(10000); 
   }
 
-  LOG_I(HW, "rfsimulator: connection established\n");
+  LOG_D(HW, "rfsimulator: connection established\n");
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
   // Allocate circular buffer or any other resources needed
@@ -870,7 +870,7 @@ static int startClient(openair0_device *device)
       zmq_msg_close(&event_msg);
 
       if (event == ZMQ_EVENT_CONNECTED) {
-        LOG_I(HW, "Publisher socket connected\n");
+        LOG_D(HW, "Publisher socket connected\n");
         pub_connected = true;
       }
     } else {
@@ -885,7 +885,7 @@ static int startClient(openair0_device *device)
       zmq_msg_close(&event_msg);
 
       if (event == ZMQ_EVENT_CONNECTED) {
-        LOG_I(HW, "Subscriber socket connected\n");
+        LOG_D(HW, "Subscriber socket connected\n");
         sub_connected = true;
       }
     } else {
@@ -895,7 +895,7 @@ static int startClient(openair0_device *device)
     usleep(10000); 
   }
 
-  LOG_I(HW, "rfsimulator: connection established\n");
+  LOG_D(HW, "rfsimulator: connection established\n");
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
 
@@ -915,7 +915,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
   if (!alreadyLocked)
     pthread_mutex_lock(&Sockmutex);
 
-  LOG_I(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
+  LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
 
   buffer_t *b=&t->buf[0];
 
@@ -1047,7 +1047,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       topic[sizeof(topic) - 1] = '\0';
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
       // LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
-      LOG_I(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
+      LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
 
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
@@ -1056,7 +1056,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         }
       }
       if (sz > 0 ) {
-          LOG_I(HW, "Socket rcv %zd bytes\n", sz);
+          LOG_D(HW, "Socket rcv %zd bytes\n", sz);
           b->remainToTransfer -= sz;
           b->transferPtr+=sz;
 
@@ -1069,14 +1069,14 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
             b->headerMode = false;
 
             if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
-            LOG_I(HW, "Client handling current time\n");
+            LOG_D(HW, "Client handling current time\n");
               t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
                               b->th.timestamp -  nsamps_for_initial :
                               0;
               b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
                                 b->th.timestamp :
                                 nsamps_for_initial;
-              LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
+              LOG_D(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
               b->trashingPacket=true;
               if (b->channel_model)
                 b->channel_model->start_TS = t->nextRxTstamp;
@@ -1170,7 +1170,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       }
 
       if (have_to_wait) {
-        LOG_I(HW,
+        LOG_D(HW,
               "Waiting on socket, current last ts: %ld, expected at least : %ld\n",
               b->lastReceivedTS,
               t->nextRxTstamp + nsamps);
@@ -1306,13 +1306,13 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   if (rfsimulator->chan_offset != 0) {
     if (CirSize < minCirSize + rfsimulator->chan_offset) {
       CirSize = minCirSize + rfsimulator->chan_offset;
-      LOG_I(HW, "CirSize = %lu\n", CirSize);
+      // LOG_I(HW, "CirSize = %lu\n", CirSize);
     }
     rfsimulator->prop_delay_ms = rfsimulator->chan_offset * 1000 / rfsimulator->sample_rate;
-    LOG_I(HW, "propagation delay %f ms, %lu samples\n", rfsimulator->prop_delay_ms, rfsimulator->chan_offset);
+    LOG_D(HW, "propagation delay %f ms, %lu samples\n", rfsimulator->prop_delay_ms, rfsimulator->chan_offset);
   }
   pthread_mutex_init(&Sockmutex, NULL);
-  LOG_I(HW,
+  LOG_D(HW,
         "Running as %s\n",
         rfsimulator->role == SIMU_ROLE_SERVER ? "server waiting opposite rfsimulators to connect"
                                               : "client: will connect to a rfsimulator server side");
