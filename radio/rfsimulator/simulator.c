@@ -481,37 +481,46 @@ static int rfsimu_setchanmod_cmd(char *buff, int debug, telnet_printfunc_t prnt,
     else {
       rfsimulator_state_t *t = (rfsimulator_state_t *)arg;
       int found=0;
-      for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-        buffer_t *b=&t->buf[i];
-        if ( b->channel_model==NULL)
-          continue;
-        if (b->channel_model->model_name==NULL)
-          continue;
-        if (b->conn_sock >= 0 && (strcmp(b->channel_model->model_name,modelname)==0)) {
-          channel_desc_t *newmodel = new_channel_desc_scm(t->tx_num_channels,
-                                                          t->rx_num_channels,
-                                                          channelmod,
-                                                          t->sample_rate,
-                                                          t->rx_freq,
-                                                          t->tx_bw,
-                                                          30e-9, // TDL delay-spread parameter
-                                                          0.0,
-                                                          CORR_LEVEL_LOW,
-                                                          t->chan_forgetfact, // forgetting_factor
-                                                          t->chan_offset, // propagation delay in samples
-                                                          t->chan_pathloss,
-                                                          t->noise_power_dB); // path_loss in dB
-          set_channeldesc_owner(newmodel, RFSIMU_MODULEID);
-          set_channeldesc_name(newmodel,modelname);
-          random_channel(newmodel,false);
-          channel_desc_t *oldmodel=b->channel_model;
-          b->channel_model=newmodel;
-          free_channel_desc_scm(oldmodel);
-          prnt("%s: New model type %s applied to channel %s connected to sock %d\n", __func__, modeltype, modelname, i);
-          found=1;
-          break;
+      // for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+      buffer_t *b=&t->buf[0];
+      if ( b->channel_model==NULL){
+        free(modelname);
+        free(modeltype);
+        return CMDSTATUS_FOUND;
+      }
+        // continue;
+
+      if (b->channel_model->model_name==NULL){
+        free(modelname);
+        free(modeltype);
+        return CMDSTATUS_FOUND;
+      }
+        // continue;
+      if (b->conn_sock >= 0 && (strcmp(b->channel_model->model_name,modelname)==0)) {
+        channel_desc_t *newmodel = new_channel_desc_scm(t->tx_num_channels,
+                                                        t->rx_num_channels,
+                                                        channelmod,
+                                                        t->sample_rate,
+                                                        t->rx_freq,
+                                                        t->tx_bw,
+                                                        30e-9, // TDL delay-spread parameter
+                                                        0.0,
+                                                        CORR_LEVEL_LOW,
+                                                        t->chan_forgetfact, // forgetting_factor
+                                                        t->chan_offset, // propagation delay in samples
+                                                        t->chan_pathloss,
+                                                        t->noise_power_dB); // path_loss in dB
+        set_channeldesc_owner(newmodel, RFSIMU_MODULEID);
+        set_channeldesc_name(newmodel,modelname);
+        random_channel(newmodel,false);
+        channel_desc_t *oldmodel=b->channel_model;
+        b->channel_model=newmodel;
+        free_channel_desc_scm(oldmodel);
+        prnt("%s: New model type %s applied to channel %s connected to sock %d\n", __func__, modeltype, modelname, 0);
+        found=1;
+          // break;
         }
-      } /* for */
+      // } /* for */
       if (found==0)
         prnt("%s: Channel %s not found or not currently used\n", __func__, modelname);
     }
@@ -581,17 +590,19 @@ static int rfsimu_setdistance_cmd(char *buff, int debug, telnet_printfunc_t prnt
   t->chan_offset = new_offset;
 
   /* Set distance in rfsim and channel model, update channel and ringbuffer */
-  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-    buffer_t *b=&t->buf[i];
+  // for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+    buffer_t *b=&t->buf[0];
     if (b->conn_sock <= 0 || b->channel_model == NULL || b->channel_model->model_name == NULL || strcmp(b->channel_model->model_name, modelname) != 0) {
       if (b->channel_model != NULL && b->channel_model->model_name != NULL)
         prnt("  %s: model %s unmodified\n", __func__, b->channel_model->model_name);
-      continue;
+      // continue;
+      free(modelname);
+      return CMDSTATUS_FOUND;
     }
 
     channel_desc_t *cd = b->channel_model;
     cd->channel_offset = new_offset;
-  }
+  // }
 
   free(modelname);
 
@@ -607,16 +618,18 @@ static int rfsimu_getdistance_cmd(char *buff, int debug, telnet_printfunc_t prnt
   const double sample_rate = t->sample_rate;
   const double c = 299792458; /* 3e8 */
 
-  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-    buffer_t *b=&t->buf[i];
-    if (b->conn_sock <= 0 || b->channel_model == NULL || b->channel_model->model_name == NULL)
-      continue;
+  // for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+    buffer_t *b=&t->buf[0];
+    if (b->conn_sock <= 0 || b->channel_model == NULL || b->channel_model->model_name == NULL){
 
+      prnt("%s: <default> offset %lu delay %f ms\n", __func__, t->chan_offset, t->prop_delay_ms);
+      return CMDSTATUS_FOUND;
+    }
     channel_desc_t *cd = b->channel_model;
     const uint64_t offset = cd->channel_offset;
     const double distance = (double) offset * c / sample_rate;
     prnt("%s: %s offset %lu distance %.3f m\n", __func__, cd->model_name, offset, distance);
-  }
+  // }
   prnt("%s: <default> offset %lu delay %f ms\n", __func__, t->chan_offset, t->prop_delay_ms);
 
   return CMDSTATUS_FOUND;
@@ -1200,7 +1213,8 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         *ptimestamp = t->nextRxTstamp-nsamps;
         return nsamps;
       }
-  }
+    // else goto handlefirstconn;
+  } else {
   if (t->buf[0].circularBuf != NULL ) {
     bool have_to_wait;
 
@@ -1227,7 +1241,8 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       }
     } while (have_to_wait);
   }
-
+  }
+  // handlefirstconn:
   // Clear the output buffer
   for (int a=0; a<nbAnt; a++)
     memset(samplesVoid[a],0,sampleToByte(nsamps,1));
@@ -1310,13 +1325,13 @@ static int rfsimulator_reset_stats(openair0_device *device) {
 }
 static void rfsimulator_end(openair0_device *device) {
   rfsimulator_state_t* s = device->priv;
-  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-    buffer_t *b = &s->buf[i];
-    if (b->conn_sock >= 0 )
-      removeCirBuf(s, b->fd_sub_sock);
-  }
-  close(s->epollfd);
-  hashtable_destroy(&s->fd_to_buf_map);
+  // for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+  buffer_t *b = &s->buf[0];
+  if (b->fd_sub_sock >= 0 )
+    removeCirBuf(s, b->fd_sub_sock);
+  // }
+  // close(s->epollfd);
+  // hashtable_destroy(&s->fd_to_buf_map);
 }
 static int rfsimulator_stop(openair0_device *device) {
   return 0;
