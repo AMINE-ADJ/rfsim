@@ -305,6 +305,7 @@ static void removeCirBuf(rfsimulator_state_t *bridge, int sub_sock) {
   // close(sock);
   zmq_close(bridge->pub_sock);
   zmq_close(bridge->sub_sock);
+  zmq_ctx_destroy(bridge->context);
   buffer_t* buf = &bridge->buf[0];
   if (buf) {
     free(buf->circularBuf);
