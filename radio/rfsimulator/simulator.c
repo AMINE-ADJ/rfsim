@@ -259,8 +259,8 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
   AssertFatal(rc == 0, "Failed to set ZMQ_SNDBUF on publisher socket");
 
   // Set the receive buffer size for the subscriber socket
-  rc = zmq_setsockopt(ptr->sub_sock, ZMQ_RCVBUF, &sendbuff, optlen);
-  AssertFatal(rc == 0, "Failed to set ZMQ_RCVBUF on subscriber socket");
+  // rc = zmq_setsockopt(ptr->sub_sock, ZMQ_RCVBUF, &sendbuff, optlen);
+  // AssertFatal(rc == 0, "Failed to set ZMQ_RCVBUF on subscriber socket");
   // Polling the sub socket
   // zmq_pollitem_t pollitem = {ptr->sub_sock, 0, ZMQ_POLLIN, 0};
   // bridge->pollitems[0] = pollitem;
@@ -292,7 +292,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
 
     set_channeldesc_owner(ptr->channel_model, RFSIMU_MODULEID);
     random_channel(ptr->channel_model,false);
-    LOG_D(HW, "Random channel %s in rfsimulator activated\n", modelname);
+    LOG_I(HW, "Random channel %s in rfsimulator activated\n", modelname);
   }
   // add_buff_to_socket_mapping(bridge, sock, buff_index);
   return 0;
