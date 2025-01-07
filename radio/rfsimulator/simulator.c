@@ -1044,9 +1044,10 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           // int cap = sizeof(topic);
           // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
           // topic[tsize < cap ? tsize : cap - 1] = '\0';
-          if (allocCirBuf(t, t->fd_sub_sock) == -1) {
-            return false;
-          }
+          if (nb_ue==0)
+            if (allocCirBuf(t, t->fd_sub_sock) == -1) {
+              return false;
+            }
           LOG_I(HW, "A client connects: %s, sending the current time\n",deviceid);
           c16_t v= {0};
           nb_ue++;
