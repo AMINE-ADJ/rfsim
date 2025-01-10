@@ -852,6 +852,7 @@ static int startClient(openair0_device *device)
 
   // Subscribe to the downlink topic
   const char *topic = "downlink";
+
   rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
   AssertFatal(rc == 0, "Failed to subscribe to topic");
   size_t fd_size = sizeof(t->fd_pub_sock);
@@ -1389,10 +1390,11 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   device->trx_write_init = rfsimulator_write_init;
 
   for (int i = 0; i < MAX_FD_RFSIMU; i++)
+    rfsimulator->buf[i].fd_sub_sock = -1;
   //   rfsimulator->buf[i].conn_sock=-1;
   // rfsimulator->next_buf = 0;
   // rfsimulator->fd_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
-  rfsimulator->buf[0].fd_sub_sock = -1;
+  
 
   // AssertFatal((rfsimulator->epollfd = epoll_create1(0)) != -1, "epoll_create1() failed, errno(%d)", errno);
 

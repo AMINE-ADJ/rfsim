@@ -387,6 +387,8 @@ int nr_rx_pbch(PHY_VARS_NR_UE *ue,
   write_output("rxdataF0_pbch.m","rxF0pbch",
                &rxdataF[0][(symbol_offset+1)*frame_parms->ofdm_symbol_size],frame_parms->ofdm_symbol_size*3,1,1);
 #endif
+write_output("rxdataF0_pbch.m","rxF0pbch",
+               &rxdataF[0][(symbol_offset+1)*frame_parms->ofdm_symbol_size],frame_parms->ofdm_symbol_size*3,1,1);
   // symbol refers to symbol within SSB. symbol_offset is the offset of the SSB wrt start of slot
   double log2_maxh = 0;
 

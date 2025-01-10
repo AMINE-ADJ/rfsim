@@ -89,6 +89,7 @@ int nr_slot_fep(PHY_VARS_NR_UE *ue,
   for (unsigned char aa=0; aa<frame_parms->nb_antennas_rx; aa++) {
     int16_t *rxdata_ptr = (int16_t *)&rxdata[aa][rx_offset];
 
+    // LOG_I(PHY, "rxdata_ptr : %d \n", *rxdata_ptr );
     rx_offset %= total_samples;
 
     // This happens only during initial sync
