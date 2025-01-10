@@ -678,7 +678,7 @@ static int startServer(openair0_device *device)
   rc = zmq_connect(t->sub_sock, sub_endpoint);
   AssertFatal(rc == 0, "Failed to connect subscriber socket");
 
-  // Subscribe to the downlink topic
+  // Subscribe to the uplink topic
   const char *topic = "uplink";
   rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
   AssertFatal(rc == 0, "Failed to subscribe to topic");

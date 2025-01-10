@@ -71,7 +71,7 @@ int nr_generate_sss(  c16_t *txdataF,
       k-=frame_parms->ofdm_symbol_size;
   }
 #ifdef NR_SSS_DEBUG
-  //  write_output("sss_0.m", "sss_0", (void*)txdataF[0][l*frame_parms->ofdm_symbol_size], frame_parms->ofdm_symbol_size, 1, 1);
+  //  ("sss_0.m", "sss_0", (void*)txdataF[0][l*frame_parms->ofdm_symbol_size], frame_parms->ofdm_symbol_size, 1, 1);
 #endif
 
   return 0;
