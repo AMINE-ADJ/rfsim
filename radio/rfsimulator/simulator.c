@@ -375,11 +375,11 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
   while (count) {
     if (t->role == SIMU_ROLE_SERVER){
       char topic[] = "downlink";
-      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
+      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
     }
     else {
       char topic[] = "uplink";
-      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE);
+      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
     }
 
     // while (count) {
@@ -1034,13 +1034,13 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       //receiving topic
       char topic[256];
       int cap = sizeof(topic);
-      int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
+      int tsize= zmq_recv(t->sub_sock, topic,cap-1 , ZMQ_DONTWAIT);
       topic[tsize < cap ? tsize : cap - 1] = '\0';
       if (strncasecmp(topic, "join", 3) == 0){
         if ( t->role == SIMU_ROLE_SERVER ) {
           char deviceid[256];
           int cap = sizeof(deviceid);
-          int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , 0);
+          int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
           deviceid[idsize < cap ? idsize : cap - 1] = '\0';
           // char topic[256];
           // int cap = sizeof(topic);
