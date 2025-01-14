@@ -247,7 +247,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
   ptr->pub_sock = bridge->pub_sock;
   ptr->sub_sock = bridge->sub_sock; // temporary duplicating data for testing purposes
   ptr->fd_pub_sock = bridge->fd_pub_sock;
-  ptr->fd_sub_sock = bridge->fd_pub_sock;
+  ptr->fd_sub_sock = bridge->fd_sub_sock;
   ptr->lastReceivedTS=0;
   ptr->headerMode=true;
   ptr->trashingPacket=false;
