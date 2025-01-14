@@ -407,7 +407,7 @@ static int nr_ue_pbch_procedures(PHY_VARS_NR_UE *ue,
                    &symb_offset,
                    ue->frame_parms.samples_per_frame_wCP,
                    rxdataF);
-
+  // LOG_I(PHY, "ret value : %d \n", ret);
   if (ret==0) {
 
 #ifdef DEBUG_PHY_PROC

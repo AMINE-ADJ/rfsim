@@ -843,6 +843,17 @@ uint32_t polar_decoder_int16(int16_t *input,
          polarParams->payloadBits);
 #endif
 
+  // printf("A %lx B %lx|%lx Cprime %lx|%lx (crc %x,rxcrc %lx, XOR %lx, bits%d)\n",
+  //        Ar,
+  //        B[1],
+  //        B[0],
+  //       //  Cprime[1],
+  //       //  Cprime[0],
+  //        crc,
+  //        rxcrc,
+  //        crc ^ rxcrc,
+  //        polarParams->payloadBits);
+
   out[0] = Ar;
 
   polarReturn(polarParams);

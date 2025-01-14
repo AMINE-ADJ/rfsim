@@ -67,7 +67,8 @@
 // The default value is chosen for 10ms buffering which makes 23040*20 = 460800 samples
 // The previous value is kept below in comment it was computed for 100ms 1x 20MHz
 // #define CirSize 6144000 // 100ms SiSo 20MHz LTE
-#define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
+// #define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
+#define minCirSize 86080000
 #define sampleToByte(a,b) ((a)*(b)*sizeof(sample_t))
 #define byteToSample(a,b) ((a)/(sizeof(sample_t)*(b)))
 
