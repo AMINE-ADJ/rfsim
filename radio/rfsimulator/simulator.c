@@ -927,13 +927,13 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
 
   buffer_t *b=&t->buf[0];
 
-  if (b->pub_sock != NULL ) {
+  if (b->fd_sub_sock >= 0) {
     samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
     fullwrite(b->pub_sock,&header, sizeof(header), t);
     sample_t tmpSamples[nsamps][nbAnt];
 
     if (nbAnt == 1) {
-      if (b->pub_sock != NULL) {
+      if (b->fd_sub_sock >= 0) {
         fullwrite(b->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
       }
     } else {
@@ -944,7 +944,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
           tmpSamples[s][a] = in[s];
       }
 
-      if (b->pub_sock != NULL) {
+      if (b->fd_sub_sock >= 0) {
         fullwrite(b->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
       }
     }
@@ -1028,7 +1028,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   if (rc == 0) {
     return false;
   }
-
 
   if (items[0].revents & ZMQ_POLLIN) {
       //receiving topic
