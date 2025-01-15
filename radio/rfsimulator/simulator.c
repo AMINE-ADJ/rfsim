@@ -188,7 +188,8 @@ typedef struct {
   buffer_t buf[MAX_FD_RFSIMU];
   int next_buf;
   // Hashtable used as an indirection level between file descriptor and the buf array
-  hash_table_t *fd_to_buf_map;
+  // hash_table_t *fd_to_buf_map;
+  hash_table_t *id_to_buf_map;
   int rx_num_channels;
   int tx_num_channels;
   double sample_rate;
@@ -206,38 +207,57 @@ typedef struct {
   zmq_pollitem_t pollitems[];
 } rfsimulator_state_t;
 
-static buffer_t *get_buff_from_socket(rfsimulator_state_t *simulator_state, int socket)
+// static buffer_t *get_buff_from_socket(rfsimulator_state_t *simulator_state, int socket)
+// {
+//   uint64_t buffer_index;
+//   if (hashtable_get(simulator_state->fd_to_buf_map, socket, (void **)&buffer_index) == HASH_TABLE_OK) {
+//     return &simulator_state->buf[buffer_index];
+//   } else {
+//     return NULL;
+//   }
+// }
+
+static buffer_t *get_buff_from_id(rfsimulator_state_t *simulator_state, int id)
 {
   uint64_t buffer_index;
-  if (hashtable_get(simulator_state->fd_to_buf_map, socket, (void **)&buffer_index) == HASH_TABLE_OK) {
+  if (hashtable_get(simulator_state->id_to_buf_map, id, (void **)&buffer_index) == HASH_TABLE_OK) {
     return &simulator_state->buf[buffer_index];
   } else {
     return NULL;
   }
 }
 
-static void add_buff_to_socket_mapping(rfsimulator_state_t *simulator_state, int socket, uint64_t buff_index)
+// static void add_buff_to_socket_mapping(rfsimulator_state_t *simulator_state, int socket, uint64_t buff_index)
+// {
+//   hashtable_rc_t rc = hashtable_insert(simulator_state->fd_to_buf_map, socket, (void *)buff_index);
+//   AssertFatal(rc == HASH_TABLE_OK,
+//               "%s sock = %d\n",
+//               rc == HASH_TABLE_INSERT_OVERWRITTEN_DATA ? "Duplicate entry in hashtable" : "Hashtable is not allocated",
+//               socket);
+// }
+
+static void add_buff_to_id_mapping(rfsimulator_state_t *simulator_state, int id, uint64_t buff_index)
 {
-  hashtable_rc_t rc = hashtable_insert(simulator_state->fd_to_buf_map, socket, (void *)buff_index);
+  hashtable_rc_t rc = hashtable_insert(simulator_state->id_to_buf_map, id, (void *)buff_index);
   AssertFatal(rc == HASH_TABLE_OK,
-              "%s sock = %d\n",
+              "%s id = %d\n",
               rc == HASH_TABLE_INSERT_OVERWRITTEN_DATA ? "Duplicate entry in hashtable" : "Hashtable is not allocated",
-              socket);
+              id);
 }
 
 static void remove_buff_to_socket_mapping(rfsimulator_state_t *simulator_state, int socket)
 {
   // Failure is fine here
-  hashtable_remove(simulator_state->fd_to_buf_map, socket);
+  hashtable_remove(simulator_state->id_to_buf_map, socket);
 }
 
-static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
+static int allocCirBuf(rfsimulator_state_t *bridge, int id)
 {
   /* TODO: cleanup code so that this AssertFatal becomes useless */
-  // AssertFatal(sock >= 0 && sock < sizeofArray(bridge->buf), "socket %d is not in range\n", sock); no need for this
-  // uint64_t buff_index = bridge->next_buf++ % MAX_FD_RFSIMU;
-  // buffer_t *ptr=&bridge->buf[buff_index];
-  buffer_t *ptr = &bridge->buf[0];// substitute subs socket
+  AssertFatal(id >= 0 && id < sizeofArray(bridge->buf), "device_id %d is not in range\n", id);
+  uint64_t buff_index = bridge->next_buf++ % MAX_FD_RFSIMU;
+  buffer_t *ptr=&bridge->buf[buff_index];
+  // buffer_t *ptr = &bridge->buf[0];// substitute subs socket
   ptr->circularBuf = calloc(1, sampleToByte(CirSize, 1));
   if (ptr->circularBuf == NULL) {
     LOG_E(HW, "malloc(%lu) failed\n", sampleToByte(CirSize, 1));
@@ -295,7 +315,7 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int sock)
     random_channel(ptr->channel_model,false);
     LOG_I(HW, "Random channel %s in rfsimulator activated\n", modelname);
   }
-  // add_buff_to_socket_mapping(bridge, sock, buff_index);
+  add_buff_to_id_mapping(bridge, id, buff_index);
   return 0;
 }
 
@@ -320,12 +340,12 @@ static void removeCirBuf(rfsimulator_state_t *bridge, int sub_sock) {
   }
 }
 
-static void socketError(rfsimulator_state_t *bridge, int sock) {
-  buffer_t* buf = get_buff_from_socket(bridge, sock);
+static void socketError(rfsimulator_state_t *bridge, int id) {
+  buffer_t* buf = get_buff_from_id(bridge, id);
   if (!buf) return;
   if (buf->fd_pub_sock != -1) {
     LOG_W(HW, "Lost socket\n");
-    removeCirBuf(bridge, sock);
+    removeCirBuf(bridge, id);
 
     if (bridge->role == SIMU_ROLE_CLIENT)
       exit(1);
@@ -1392,9 +1412,10 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   for (int i = 0; i < MAX_FD_RFSIMU; i++)
     rfsimulator->buf[i].fd_sub_sock = -1;
   //   rfsimulator->buf[i].conn_sock=-1;
-  // rfsimulator->next_buf = 0;
+  rfsimulator->next_buf = 0;
   // rfsimulator->fd_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
   
+  rfsimulator->id_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
 
   // AssertFatal((rfsimulator->epollfd = epoll_create1(0)) != -1, "epoll_create1() failed, errno(%d)", errno);
 
