@@ -112,6 +112,7 @@ typedef enum { SIMU_ROLE_SERVER = 1, SIMU_ROLE_CLIENT } simuRole; //SIMU_ROLE_CL
 #define simOpt PARAMFLAG_NOFREE|PARAMFLAG_CMDLINE_NOPREFIXENABLED
 #define RFSIMULATOR_PARAMS_DESC {					\
     {"brokerip",             "<broker ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->brokerip,               .defstrval="127.0.0.1",           TYPE_STRING,    0 },\
+    {"device_id",             "<device id>\n",                                 simOpt,  .strptr=&rfsimulator->device_id,            .defstrval="0",           TYPE_STRING,     0 },\
     {"xsubport",             "<port to connect to xsubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xsubport),           .defuintval=XSUBPORT,                 TYPE_UINT16,    0 },\
     {"xpubport",             "<port to connect to xpubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xpubport),           .defuintval=XPUBPORT,                 TYPE_UINT16,    0 },\
     {"serveraddr",             "<ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->ip,               .defstrval="127.0.0.1",           TYPE_STRING,    0 },\
@@ -173,6 +174,7 @@ typedef struct {
   openair0_timestamp lastWroteTS;
   simuRole role;
 
+  char *device_id;
   void *context;
   void *pub_sock; // for initialization and connection purposes.
   void *sub_sock;
@@ -245,10 +247,16 @@ static void add_buff_to_id_mapping(rfsimulator_state_t *simulator_state, int id,
               id);
 }
 
-static void remove_buff_to_socket_mapping(rfsimulator_state_t *simulator_state, int socket)
+// static void remove_buff_to_socket_mapping(rfsimulator_state_t *simulator_state, int socket)
+// {
+//   // Failure is fine here
+//   hashtable_remove(simulator_state->fd_to_buf_map, socket);
+// }
+
+static void remove_buff_to_id_mapping(rfsimulator_state_t *simulator_state, int id)
 {
   // Failure is fine here
-  hashtable_remove(simulator_state->id_to_buf_map, socket);
+  hashtable_remove(simulator_state->id_to_buf_map, id);
 }
 
 static int allocCirBuf(rfsimulator_state_t *bridge, int id)
@@ -399,7 +407,11 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
     }
     else {
       char topic[] = "uplink";
-      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+      char formatted_topic[256]; // Ensure enough space for the formatted string
+
+    // Format the topic with the device ID
+      sprintf(formatted_topic, "%s %d", topic, t->device_id);
+      zmq_send(pub_sock, formatted_topic, strlen(formatted_topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
     }
 
     // while (count) {
@@ -945,27 +957,29 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
 
   LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
 
-  buffer_t *b=&t->buf[0];
 
-  if (b->fd_sub_sock >= 0) {
-    samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
-    fullwrite(b->pub_sock,&header, sizeof(header), t);
-    sample_t tmpSamples[nsamps][nbAnt];
+  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+    buffer_t *b=&t->buf[i];
+    if (b->fd_sub_sock >= 0) {
+      samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
+      fullwrite(b->pub_sock,&header, sizeof(header), t);
+      sample_t tmpSamples[nsamps][nbAnt];
 
-    if (nbAnt == 1) {
-      if (b->fd_sub_sock >= 0) {
-        fullwrite(b->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
-      }
-    } else {
-      for (int a = 0; a < nbAnt; a++) {
-        sample_t *in = (sample_t *)samplesVoid[a];
+      if (nbAnt == 1) {
+        if (b->fd_sub_sock >= 0) {
+          fullwrite(b->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
+        }
+      } else {
+        for (int a = 0; a < nbAnt; a++) {
+          sample_t *in = (sample_t *)samplesVoid[a];
 
-        for (int s = 0; s < nsamps; s++)
-          tmpSamples[s][a] = in[s];
-      }
+          for (int s = 0; s < nsamps; s++)
+            tmpSamples[s][a] = in[s];
+        }
 
-      if (b->fd_sub_sock >= 0) {
-        fullwrite(b->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
+        if (b->fd_sub_sock >= 0) {
+          fullwrite(b->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
+        }
       }
     }
   }
@@ -1061,12 +1075,13 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           int cap = sizeof(deviceid);
           int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
           deviceid[idsize < cap ? idsize : cap - 1] = '\0';
+          int device_id = atoi(deviceid);
           // char topic[256];
           // int cap = sizeof(topic);
           // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
           // topic[tsize < cap ? tsize : cap - 1] = '\0';
-          if (nb_ue==0)
-            if (allocCirBuf(t, t->fd_sub_sock) == -1) {
+          // if (nb_ue==0)
+          if (allocCirBuf(t, device_id) == -1) {
               return false;
             }
           LOG_I(HW, "A client connects: %s, sending the current time\n",deviceid);
@@ -1079,13 +1094,24 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
           rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
 
-          buffer_t *b = &t->buf[0];
+          buffer_t *b = get_buff_from_id(t, device_id);
+          // buffer_t *b = &t->buf[0];
           if (b->channel_model)
             b->channel_model->start_TS = t->lastWroteTS;
           return rc > 0;
         }
       }
-      buffer_t *b =  &t->buf[0];
+       buffer_t *b;
+      if (t->role == SIMU_ROLE_SERVER) { 
+        char deviceid[256];
+        strcpy(deviceid, topic + strlen("uplink") + 1);
+        int id = atoi(deviceid);
+        b = get_buff_from_id(t, id);
+      } else {
+        b = get_buff_from_id(t, t->device_id);
+      }
+
+     
       if ( b->circularBuf == NULL ) {
         LOG_E(HW, "Received data on not connected socket \n");
         return rc > 0; // added
@@ -1094,7 +1120,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       ssize_t blockSz;
 
       if ( b->headerMode )
-        blockSz=b->remainToTransfer;
+        blockSz=b->remainToTransfer; 
       else
         blockSz= b->transferPtr + b->remainToTransfer <= b->circularBufEnd ?
                  b->remainToTransfer :
@@ -1206,12 +1232,13 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
 
   // deliver data from received data
   // check if a UE is connected
-  // int first_sock;
+  int first_sock;
 
-  // for (first_sock = 0; first_sock < MAX_FD_RFSIMU; first_sock++)
-    // if (t->buf[first_sock].circularBuf != NULL )
-      // break;
-  if (nb_ue ==0 && t->role == SIMU_ROLE_SERVER) {
+  for (first_sock = 0; first_sock < MAX_FD_RFSIMU; first_sock++)
+    if (t->buf[first_sock].circularBuf != NULL )
+      break;
+
+  if (first_sock == MAX_FD_RFSIMU) {
     if ( t->nextRxTstamp == 0)
         LOG_I(HW, "No connected device, generating void samples...\n");
 
@@ -1227,7 +1254,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         *ptimestamp = t->nextRxTstamp-nsamps;
         return nsamps;
       }
-  } else if (t->buf[0].circularBuf != NULL ){
+  } else {
   // if (t->buf[0].circularBuf != NULL ) {
     bool have_to_wait;
 
@@ -1235,15 +1262,15 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       have_to_wait=false;
 
       buffer_t *b = NULL;
-      // for (int sock = 0; sock < MAX_FD_RFSIMU; sock++) {
-        b = &t->buf[0];
+      for (int id = 0; id < MAX_FD_RFSIMU; id++) {
+        b = &t->buf[id];
 
         if ( b->circularBuf )
           if ( t->nextRxTstamp+nsamps > b->lastReceivedTS ) {
             have_to_wait=true;
-            // break;
+            break;
           }
-      // }
+      }
 
       if (have_to_wait) {
         LOG_D(HW,
@@ -1261,8 +1288,8 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
     memset(samplesVoid[a],0,sampleToByte(nsamps,1));
 
   // Add all input nodes signal in the output buffer
-  // for (int sock = 0; sock < MAX_FD_RFSIMU; sock++) {
-    buffer_t *ptr=&t->buf[0];
+  for (int id = 0; id < MAX_FD_RFSIMU; id++) {
+    buffer_t *ptr=&t->buf[id];
 
     if ( ptr->circularBuf ) {
       bool reGenerateChannel=false;
@@ -1315,7 +1342,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
         } // end of no channel modeling
       } // end for a (number of rx antennas)
     }
-  // }
+  }
 
   *ptimestamp = t->nextRxTstamp; // return the time of the first sample
   t->nextRxTstamp+=nsamps;
@@ -1344,7 +1371,9 @@ static void rfsimulator_end(openair0_device *device) {
       removeCirBuf(s, b->fd_sub_sock);
   }
   close(s->epollfd);
-  hashtable_destroy(&s->fd_to_buf_map);
+  // hashtable_destroy(&s->fd_to_buf_map);
+    hashtable_destroy(&s->id_to_buf_map);
+
 }
 static int rfsimulator_stop(openair0_device *device) {
   return 0;
