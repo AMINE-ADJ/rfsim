@@ -417,7 +417,7 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
       char formatted_topic[256]; // Ensure enough space for the formatted string
 
     // Format the topic with the device ID
-      sprintf(formatted_topic, "%s %d", topic, t->device_id);
+      sprintf(formatted_topic, "%s %s", topic, t->device_id);
       zmq_send(pub_sock, formatted_topic, strlen(formatted_topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
     }
 
@@ -950,7 +950,7 @@ static int startClient(openair0_device *device)
   zmq_send(t->pub_sock, jointopic, strlen(jointopic), ZMQ_SNDMORE);
   zmq_send(t->pub_sock, deviceid, strlen(deviceid), 0);
   usleep(20000);
-  return allocCirBuf(t, t->device_id);
+  return allocCirBuf(t, atoi(t->device_id));
 
 
   // LOG_I(HW, "rfsimulator: Start Client Ends\n");
@@ -1100,7 +1100,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         int id = atoi(deviceid);
         b = get_buff_from_id(t, id);
       } else {
-        b = get_buff_from_id(t, t->device_id);
+        b = get_buff_from_id(t, atoi(t->device_id));
       }
 
      
