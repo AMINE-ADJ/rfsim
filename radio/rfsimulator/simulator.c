@@ -945,10 +945,10 @@ static int startClient(openair0_device *device)
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
   char jointopic[] = "join";
-  char deviceid[]= "1";
+  // char deviceid[]=  t->device_id;
   // t->device_id = deviceid;
   zmq_send(t->pub_sock, jointopic, strlen(jointopic), ZMQ_SNDMORE);
-  zmq_send(t->pub_sock, deviceid, strlen(deviceid), 0);
+  zmq_send(t->pub_sock, t->device_id, strlen(t->device_id), 0);
   usleep(20000);
   return allocCirBuf(t, atoi(t->device_id));
 
