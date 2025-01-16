@@ -111,7 +111,7 @@ typedef enum { SIMU_ROLE_SERVER = 1, SIMU_ROLE_CLIENT } simuRole; //SIMU_ROLE_CL
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #define simOpt PARAMFLAG_NOFREE|PARAMFLAG_CMDLINE_NOPREFIXENABLED
 #define RFSIMULATOR_PARAMS_DESC {					\
-    {"brokerip",             "<broker ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->brokerip,               .defstrval="127.0.0.1",           TYPE_STRING,    0 },\
+    {"brokerip",             "<broker ip address to connect to>\n",        simOpt,  .strptr=&rfsimulator->brokerip,               .defstrval="0.0.0.0",           TYPE_STRING,    0 },\
     {"device_id",             "<device id>\n",                                 simOpt,  .strptr=&rfsimulator->device_id,            .defstrval="0",           TYPE_STRING,     0 },\
     {"xsubport",             "<port to connect to xsubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xsubport),           .defuintval=XSUBPORT,                 TYPE_UINT16,    0 },\
     {"xpubport",             "<port to connect to xpubsocket>\n",              simOpt,  .u16ptr=&(rfsimulator->xpubport),           .defuintval=XPUBPORT,                 TYPE_UINT16,    0 },\
