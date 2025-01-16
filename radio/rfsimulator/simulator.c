@@ -287,6 +287,13 @@ static int allocCirBuf(rfsimulator_state_t *bridge, int id)
   int rc = zmq_setsockopt(ptr->pub_sock, ZMQ_SNDBUF, &sendbuff, optlen);
   AssertFatal(rc == 0, "Failed to set ZMQ_SNDBUF on publisher socket");
 
+  if (bridge->role == SIMU_ROLE_SERVER) { 
+    int rcvhwm = 0;
+    int rc = zmq_setsockopt(bridge->sub_sock, ZMQ_RCVHWM, &rcvhwm, sizeof(int));
+    AssertFatal(rc == 0, "Failed to set ZMQ_RCVHWM on server subscribing socket");
+
+  }
+
   // Set the receive buffer size for the subscriber socket
   // rc = zmq_setsockopt(ptr->sub_sock, ZMQ_RCVBUF, &sendbuff, optlen);
   // AssertFatal(rc == 0, "Failed to set ZMQ_RCVBUF on subscriber socket");
@@ -939,10 +946,11 @@ static int startClient(openair0_device *device)
   zmq_close(sub_monitor);
   char jointopic[] = "join";
   char deviceid[]= "1";
+  // t->device_id = deviceid;
   zmq_send(t->pub_sock, jointopic, strlen(jointopic), ZMQ_SNDMORE);
   zmq_send(t->pub_sock, deviceid, strlen(deviceid), 0);
   usleep(20000);
-  return allocCirBuf(t, t->fd_sub_sock);
+  return allocCirBuf(t, t->device_id);
 
 
   // LOG_I(HW, "rfsimulator: Start Client Ends\n");
@@ -958,16 +966,16 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
   LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
 
 
-  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
-    buffer_t *b=&t->buf[i];
-    if (b->fd_sub_sock >= 0) {
+  // for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+    // buffer_t *b=&t->buf[i];
+    if (t->fd_pub_sock >= 0) {
       samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
-      fullwrite(b->pub_sock,&header, sizeof(header), t);
+      fullwrite(t->pub_sock,&header, sizeof(header), t);
       sample_t tmpSamples[nsamps][nbAnt];
 
       if (nbAnt == 1) {
-        if (b->fd_sub_sock >= 0) {
-          fullwrite(b->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
+        if (t->fd_pub_sock >= 0) {
+          fullwrite(t->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
         }
       } else {
         for (int a = 0; a < nbAnt; a++) {
@@ -977,12 +985,12 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
             tmpSamples[s][a] = in[s];
         }
 
-        if (b->fd_sub_sock >= 0) {
-          fullwrite(b->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
+        if (t->fd_pub_sock >= 0) {
+          fullwrite(t->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
         }
       }
     }
-  }
+  // }
 
   if ( t->lastWroteTS != 0 && fabs((double)t->lastWroteTS-timestamp) > (double)CirSize)
     LOG_W(HW, "Discontinuous TX gap too large Tx:%lu, %lu\n", t->lastWroteTS, timestamp);
@@ -1034,22 +1042,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
   int rc = zmq_poll(items, 1, timeout);
   
   // LOG_I(HW, "rc of zmq_poll = %d. \n", rc);
-  // if ( t->role == SIMU_ROLE_SERVER ) {
-  //   if (nb_ue !=2) nb_ue=2;
-    
-  //   LOG_I(HW, "Sending the current time\n");
-  //         c16_t v= {0};
-  //         void *samplesVoid[t->tx_num_channels];
-
-  //         for ( int i=0; i < t->tx_num_channels; i++)
-  //           samplesVoid[i]=(void *)&v;
-
-  //         rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
-
-  //         buffer_t *b = &t->buf[0];
-  //         if (b->channel_model)
-  //           b->channel_model->start_TS = t->lastWroteTS;
-  //   }
 
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
@@ -1102,7 +1094,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         }
       }
        buffer_t *b;
-      if (t->role == SIMU_ROLE_SERVER) { 
+      if (t->role == SIMU_ROLE_SERVER) { // receiving formatted topic = topic + device_id 
         char deviceid[256];
         strcpy(deviceid, topic + strlen("uplink") + 1);
         int id = atoi(deviceid);
@@ -1126,12 +1118,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
                  b->remainToTransfer :
                  b->circularBufEnd - b->transferPtr ;
 
-      //receiving topic 
-      // char topic[256];
-      // int cap = sizeof(topic);
-      // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
-      // topic[tsize < cap ? tsize : cap - 1] = '\0';
-      //receiving data ( iq samples )
+      //receiving data ( iq samples ) or header
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
       // LOG_I(HW, "Socket rcv %zd bytes\n", sz);    
       LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
@@ -1438,9 +1425,13 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   device->priv = rfsimulator;
   device->trx_write_init = rfsimulator_write_init;
 
-  for (int i = 0; i < MAX_FD_RFSIMU; i++)
+  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
     rfsimulator->buf[i].fd_sub_sock = -1;
-  //   rfsimulator->buf[i].conn_sock=-1;
+    rfsimulator->buf[i].fd_pub_sock = -1;
+  }
+
+  rfsimulator->fd_pub_sock = -1;
+  rfsimulator->fd_sub_sock = -1;  
   rfsimulator->next_buf = 0;
   // rfsimulator->fd_to_buf_map = hashtable_create(MAX_FD_RFSIMU, NULL, do_not_free_integer);
   
