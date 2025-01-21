@@ -1442,7 +1442,6 @@ void start_RU_proc(RU_t *ru)
 void kill_NR_RU_proc(int inst) {
   RU_t *ru = RC.ru[inst];
   RU_proc_t *proc = &ru->proc;
-
   /* Note: it seems pthread_FH and and FEP thread below both use
    * mutex_fep/cond_fep. Thus, we unlocked above for pthread_FH above and do
    * the same for FEP thread below again (using broadcast() to ensure both
@@ -1450,15 +1449,6 @@ void kill_NR_RU_proc(int inst) {
   pthread_mutex_lock(&proc->mutex_fep[0]);
   proc->instance_cnt_fep[0] = 0;
   pthread_cond_broadcast(&proc->cond_fep[0]);
-  pthread_mutex_unlock( &proc->mutex_fep[0] );
-  pthread_join(proc->pthread_FH, NULL);
-
-  if (cpu_meas_enabled) {
-    LOG_D(PHY, "Joining ru_stats_thread\n");
-    pthread_join(ru->ru_stats_thread, NULL);
-  }
-
-  // everything should be stopped now, we can safely stop the RF device
   if (ru->stop_rf == NULL) {
     LOG_W(PHY, "No stop_rf() for RU %d defined, cannot stop RF!\n", ru->idx);
     return;
@@ -1467,6 +1457,12 @@ void kill_NR_RU_proc(int inst) {
   if (rc != 0) {
     LOG_W(PHY, "stop_rf() returned %d, RU %d RF device did not stop properly!\n", rc, ru->idx);
     return;
+  }
+  pthread_mutex_unlock( &proc->mutex_fep[0] );
+  pthread_join(proc->pthread_FH, NULL);
+  if (cpu_meas_enabled) {
+    LOG_D(PHY, "Joining ru_stats_thread\n");
+    pthread_join(ru->ru_stats_thread, NULL);
   }
   LOG_I(PHY, "RU %d RF device stopped\n",ru->idx);
 }

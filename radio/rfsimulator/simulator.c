@@ -56,7 +56,7 @@
 #include <openair1/SIMULATION/TOOLS/sim.h>
 #include "rfsimulator.h"
 #include "hashtable.h"
-
+#include <sys/time.h>
 #define PORT 4043 //default TCP port for this simulator
 #define XSUBPORT 5555
 #define XPUBPORT 5556
@@ -206,7 +206,7 @@ typedef struct {
   poll_telnetcmdq_func_t poll_telnetcmdq;
   int wait_timeout;
   double prop_delay_ms;
-  zmq_pollitem_t pollitems[];
+  // zmq_pollitem_t pollitems[];
 } rfsimulator_state_t;
 
 
@@ -346,7 +346,8 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
   while (count) {
     if (t->role == SIMU_ROLE_SERVER){
       char topic[] = "downlink";
-      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+      // zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+      zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE );
     }
     else {
       char topic[] = "uplink";
@@ -354,10 +355,13 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
 
     // Format the topic with the device ID
       sprintf(formatted_topic, "%s %s", topic, t->device_id);
-      zmq_send(pub_sock, formatted_topic, strlen(formatted_topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+      // zmq_send(pub_sock, formatted_topic, strlen(formatted_topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+      zmq_send(pub_sock, formatted_topic, strlen(formatted_topic), ZMQ_SNDMORE);
+
     }
 
-    l = zmq_send(pub_sock, buf, count, ZMQ_DONTWAIT);
+    // l = zmq_send(pub_sock, buf, count, ZMQ_DONTWAIT);
+    l = zmq_send(pub_sock, buf, count, 0);
 
     if (l == 0) {
         LOG_E(HW, "write() failed, returned 0\n");
@@ -648,6 +652,8 @@ static int startServer(openair0_device *device)
   // Monitor the sockets to detect when they are connected
   bool pub_connected = false;
   bool sub_connected = false;
+  struct timeval start, now;
+  gettimeofday(&start, NULL);
 
   while (!pub_connected || !sub_connected) {
     // Process events for publisher
@@ -682,7 +688,13 @@ static int startServer(openair0_device *device)
       zmq_msg_close(&event_msg);
     }
 
-    
+    gettimeofday(&now, NULL);
+    double elapsed = (now.tv_sec - start.tv_sec) +
+                     (now.tv_usec - start.tv_usec) / 1000000.0;
+    if (elapsed > 7.0) {
+        LOG_W(HW, "Waited more than 7 seconds for connection to the broker, exiting loop\n");
+        break;
+    }
     usleep(10000); 
   }
 
@@ -874,7 +886,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
   int rc = zmq_poll(items, 1, timeout);
-
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
     return false;
@@ -892,7 +903,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       char topic[256];
       int cap = sizeof(topic);
       LOG_D(HW,"before topic\n");
-      int tsize= zmq_recv(t->sub_sock, topic,cap-1 , ZMQ_DONTWAIT);
+      // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , ZMQ_DONTWAIT);
+      int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
       topic[tsize < cap ? tsize : cap - 1] = '\0';
       LOG_D(HW,"received topic %s\n",topic);
       if (strncasecmp(topic, "join", 3) == 0){
@@ -900,7 +912,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           char deviceid[256];
           int cap = sizeof(deviceid);
           LOG_D(HW,"before device\n");
-          int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
+          // int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
+          int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , 0);
           deviceid[idsize < cap ? idsize : cap - 1] = '\0';
           LOG_D(HW,"received device_id %s\n",deviceid);
           int device_id = atoi(deviceid);
@@ -950,7 +963,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
       //receiving data ( iq samples ) or header
       LOG_D(HW,"before data\n");
-      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
+      // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
+      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
       LOG_D(HW,"after data\n");
       LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
 
@@ -1188,7 +1202,6 @@ static void rfsimulator_end(openair0_device *device) {
   s->fd_pub_sock=-1;
   s->fd_sub_sock=-1;
   hashtable_destroy(&s->id_to_buf_map);
-
 }
 static int rfsimulator_stop(openair0_device *device) {
   return 0;
