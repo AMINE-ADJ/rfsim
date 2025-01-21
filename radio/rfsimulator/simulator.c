@@ -869,6 +869,7 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on socket
   // store the data in lists
+  AssertFatal(t->sub_sock != NULL, "Socket is uninitialized");
   zmq_pollitem_t items[] = {
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
