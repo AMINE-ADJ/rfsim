@@ -881,11 +881,17 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on socket
   // store the data in lists
+  if (t->role==SIMU_ROLE_CLIENT)
+  pthread_mutex_lock(&Sockmutex);
   AssertFatal(t->sub_sock != NULL, "Socket is uninitialized");
   zmq_pollitem_t items[] = {
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
   int rc = zmq_poll(items, 1, timeout);
+  // LOG_I(HW,"rc: %d\n",rc);
+  if (t->role==SIMU_ROLE_CLIENT)
+  pthread_mutex_unlock(&Sockmutex);
+  // LOG_I(HW,"stuck here\n");
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
     return false;
@@ -905,6 +911,12 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       LOG_D(HW,"before topic\n");
       // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , ZMQ_DONTWAIT);
       int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
+      if ( tsize < 0 ) {
+        if ( errno != EAGAIN ) {
+          LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
+          //abort();
+        }
+      }
       topic[tsize < cap ? tsize : cap - 1] = '\0';
       LOG_D(HW,"received topic %s\n",topic);
       if (strncasecmp(topic, "join", 3) == 0){
@@ -914,6 +926,12 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           LOG_D(HW,"before device\n");
           // int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
           int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , 0);
+          if ( idsize < 0 ) {
+            if ( errno != EAGAIN ) {
+              LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
+              //abort();
+              }
+          }
           deviceid[idsize < cap ? idsize : cap - 1] = '\0';
           LOG_D(HW,"received device_id %s\n",deviceid);
           int device_id = atoi(deviceid);
@@ -970,7 +988,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
-          LOG_E(HW, "recv() failed, errno(%d)\n", errno);
+          LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
           //abort();
         }
       }
@@ -1048,7 +1066,12 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
             }
           }
         }
-      
+      int more = 0;
+      size_t more_size = sizeof(more);
+      zmq_getsockopt(t->sub_sock, ZMQ_RCVMORE, &more, &more_size);
+      if (more) {
+        AssertFatal(false,"Missing multipart data\n");
+      }
     }
     LOG_D(HW,"end flushinput\n");
   return rc > 0;
