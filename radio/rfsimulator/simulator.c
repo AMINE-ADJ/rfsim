@@ -74,7 +74,8 @@
 // #define CirSize 6144000 // 100ms SiSo 20MHz LTE
 // #define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
 // #define minCirSize 86080000
-#define minCirSize 66080000
+// #define minCirSize 50080000
+#define minCirSize 18080000
 #define sampleToByte(a,b) ((a)*(b)*sizeof(sample_t))
 #define byteToSample(a,b) ((a)/(sizeof(sample_t)*(b)))
 
@@ -881,16 +882,16 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on socket
   // store the data in lists
-  if (t->role==SIMU_ROLE_CLIENT)
-  pthread_mutex_lock(&Sockmutex);
+  // if (t->role==SIMU_ROLE_CLIENT)
+  // pthread_mutex_lock(&Sockmutex);
   AssertFatal(t->sub_sock != NULL, "Socket is uninitialized");
   zmq_pollitem_t items[] = {
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
   int rc = zmq_poll(items, 1, timeout);
   // LOG_I(HW,"rc: %d\n",rc);
-  if (t->role==SIMU_ROLE_CLIENT)
-  pthread_mutex_unlock(&Sockmutex);
+  // if (t->role==SIMU_ROLE_CLIENT)
+  // pthread_mutex_unlock(&Sockmutex);
   // LOG_I(HW,"stuck here\n");
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
