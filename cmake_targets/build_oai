@@ -37,6 +37,7 @@ set_openair_env
 gen_nvram_path=$OPENAIR_DIR/cmake_targets/ran_build/build
 conf_nvram_path=$OPENAIR_DIR/openair3/NAS/TOOLS/ue_eurecom_test_sfr.conf
 
+ZMQ=0
 HW=""
 VERBOSE_COMPILE=0
 RUN_GROUP=0
@@ -95,6 +96,8 @@ Options:
 -w | --hardware
    USRP, BLADERF, LMSSDR, IRIS, SIMU, AW2SORI, AERIAL, None (Default)
    Adds this RF board support (in external packages installation and in compilation)
+--zmq
+  Build the pub sub version of rfsimulator
 -t | --transport
    Selects the transport protocol type, options: None, Ethernet, benetel4g, benetel5g, oran_fhlib_5g
 -P | --phy_simulators
@@ -149,6 +152,7 @@ Options:
   Enable the thread sanitizer on all targets
 -h | --help
    Print this help"
+
 }
 
 
@@ -250,6 +254,11 @@ function main() {
             CMAKE_CMD="$CMAKE_CMD -DUE_EXPANSION=True -DPRE_SCD_THREAD=True"
             echo_info "Will compile with UE_EXPANSION"
             shift;;
+       --zmq)
+            ZMQ=1
+            CMAKE_CMD="$CMAKE_CMD -DOAI_ZMQ=ON -DOAI_SIMU=OFF"
+            TARGET_LIST="$TARGET_LIST broker"
+            shift;;
        --UE-conf-nvram)
             conf_nvram_path=$(readlink -f "$2")
             shift 2;;
@@ -266,24 +275,39 @@ function main() {
                 "SIMU")
                     HW="OAI_"$2
                     TARGET_LIST="$TARGET_LIST rfsimulator"
-                    CMAKE_CMD="$CMAKE_CMD -DOAI_$2=ON"
+                    if [ "$3" == "--zmq" ]; then
+                        ZMQ=1
+                        # TARGET_LIST="$TARGET_LIST rfsimulator_pub_sub"
+                        CMAKE_CMD="$CMAKE_CMD -DOAI_ZMQ=ON -DOAI_SIMU=OFF"
+                        TARGET_LIST="$TARGET_LIST broker"
+                        shift 3
+                    else 
+                        ZMQ=0
+                        # TARGET_LIST="$TARGET_LIST rfsimulator"
+                        CMAKE_CMD="$CMAKE_CMD -DOAI_$2=ON -DOAI_ZMQ=OFF"
+                        shift 2
+                    fi
                     ;;
                 "AW2SORI")
                     HW="OAI_"$2
                     TARGET_LIST="$TARGET_LIST aw2sori_transpro"
                     CMAKE_CMD="$CMAKE_CMD -DOAI_$2=ON"
+                    shift 2
                     ;;
                 "AERIAL"|"Aerial"|"aerial")
                     HW="OAI_AERIAL"
                     CMAKE_CMD="$CMAKE_CMD -DOAI_AERIAL=ON"
+                    shift 2
                     ;;
                 "None")
+                    shift 2
                     ;;
                 *)
                     echo_fatal "Unknown hardware type $2: exit..."
+                    shift 2
                     ;;
             esac
-            shift 2;;
+            ;;
        -t | --transport)
             case "$2" in
               "Ethernet")
@@ -479,7 +503,15 @@ function main() {
     # add some default libraries that should always be built
     # for eNB, gNB, UEs, simulators
     if [[ $gNB == 1 || $eNB == 1 || $UE == 1 || $nrUE == 1 || $SIMUS_PHY == 1 || $RU == 1 ]]; then
-      TARGET_LIST="$TARGET_LIST params_libconfig coding rfsimulator dfts params_yaml"
+      # TARGET_LIST="$TARGET_LIST params_libconfig coding rfsimulator dfts params_yaml"
+      if [ $ZMQ = 1 ]; then
+        CMAKE_CMD="$CMAKE_CMD -DOAI_ZMQ=ON -DOAI_SIMU=OFF"
+        TARGET_LIST="$TARGET_LIST broker"
+      else 
+        CMAKE_CMD="$CMAKE_CMD -DOAI_ZMQ=OFF -DOAI_SIMU=ON"
+      fi
+      TARGET_LIST="$TARGET_LIST params_libconfig coding dfts params_yaml rfsimulator"
+      
     fi
 
     mkdir -p $DIR/$BUILD_DIR/build
