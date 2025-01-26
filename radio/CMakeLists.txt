@@ -29,9 +29,15 @@ if(OAI_LMSSDR)
 endif()
 
 add_boolean_option(OAI_SIMU ON "Activate OAI's rfsimulator driver" OFF)
-if(OAI_SIMU)
+add_boolean_option(OAI_ZMQ ON "Activate OAI's rfsimulator pub sub driver" OFF)
+if(OAI_SIMU OR OAI_ZMQ)
   add_subdirectory(rfsimulator)
 endif()
+
+# add_boolean_option(OAI_ZMQ ON "Activate OAI's rfsimulator_pub_sub driver" OFF)
+# if(OAI_ZMQ)
+#   add_subdirectory(rfsimulator_pub_sub)
+# endif()
 
 add_boolean_option(OAI_USRP OFF "Activate OAI's USRP driver" OFF)
 if(OAI_USRP)
