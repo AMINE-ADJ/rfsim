@@ -74,8 +74,9 @@
 // #define CirSize 6144000 // 100ms SiSo 20MHz LTE
 // #define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
 // #define minCirSize 86080000
-// #define minCirSize 50080000
-#define minCirSize 18080000
+#define minCirSize 50080000
+// #define minCirSize 20080000
+
 #define sampleToByte(a,b) ((a)*(b)*sizeof(sample_t))
 #define byteToSample(a,b) ((a)/(sizeof(sample_t)*(b)))
 
@@ -154,6 +155,7 @@ unsigned int nb_ue = 0;
 
 static uint64_t CirSize = minCirSize;
 
+bool receivedFirstTS = false;
 typedef c16_t sample_t; // 2*16 bits complex number
 
 typedef struct buffer_s {
@@ -805,13 +807,13 @@ static int startClient(openair0_device *device)
     usleep(10000); 
   }
 
-  LOG_D(HW, "rfsimulator: connection established\n");
+  LOG_I(HW, "rfsimulator: connection established\n");
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
   char jointopic[] = "join";
   zmq_send(t->pub_sock, jointopic, strlen(jointopic), ZMQ_SNDMORE);
   zmq_send(t->pub_sock, t->device_id, strlen(t->device_id), 0);
-  usleep(20000);
+  // usleep(20000);
   return allocCirBuf(t, atoi(t->device_id));
 
 }
@@ -821,8 +823,13 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
     pthread_mutex_lock(&Sockmutex);
 
   LOG_D(HW, "Sending %d samples at time: %ld, nbAnt %d\n", nsamps, timestamp, nbAnt);
-
-
+  // all connected UEs need to have a buffer to broadcast the data
+  int count = 0;
+  for (int i = 0; i < MAX_FD_RFSIMU; i++) {
+    buffer_t *b=&t->buf[i];
+    if (b->fd_pub_sock >=0) count++;
+  }
+  if ( ((count != 0) && (count == nb_ue)) || t->role ==SIMU_ROLE_CLIENT){
     if (t->fd_pub_sock >= 0) {
       samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
       fullwrite(t->pub_sock,&header, sizeof(header), t);
@@ -845,6 +852,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
         }
       }
     }
+  }
 
   if ( t->lastWroteTS != 0 && fabs((double)t->lastWroteTS-timestamp) > (double)CirSize)
     LOG_W(HW, "Discontinuous TX gap too large Tx:%lu, %lu\n", t->lastWroteTS, timestamp);
@@ -882,16 +890,12 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on socket
   // store the data in lists
-  // if (t->role==SIMU_ROLE_CLIENT)
-  // pthread_mutex_lock(&Sockmutex);
   AssertFatal(t->sub_sock != NULL, "Socket is uninitialized");
   zmq_pollitem_t items[] = {
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
   int rc = zmq_poll(items, 1, timeout);
   // LOG_I(HW,"rc: %d\n",rc);
-  // if (t->role==SIMU_ROLE_CLIENT)
-  // pthread_mutex_unlock(&Sockmutex);
   // LOG_I(HW,"stuck here\n");
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
@@ -915,6 +919,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       if ( tsize < 0 ) {
         if ( errno != EAGAIN ) {
           LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
+          AssertFatal(false,"Failed in reading the topic\n");
           //abort();
         }
       }
@@ -930,7 +935,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           if ( idsize < 0 ) {
             if ( errno != EAGAIN ) {
               LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
-              //abort();
+              AssertFatal(false,"Failed in reading the device id\n");
               }
           }
           deviceid[idsize < cap ? idsize : cap - 1] = '\0';
@@ -957,20 +962,21 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       }
       buffer_t *b = NULL;
       if (t->role == SIMU_ROLE_SERVER) { // receiving formatted topic = topic + device_id 
+        // char deviceid[256];
+        // strcpy(deviceid, topic + strlen("uplink") + 1);
         char deviceid[256];
-        strcpy(deviceid, topic + strlen("uplink") + 1);
+        sscanf(topic, "uplink %255s", deviceid);
         int id = atoi(deviceid);
         b = get_buff_from_id(t, id);
       } else {
         b = get_buff_from_id(t, atoi(t->device_id));
       }
 
-     
+      if (!b) return rc > 0;
       if ( b->circularBuf == NULL ) {
         LOG_E(HW, "Received data on not connected socket \n");
         return rc > 0;
       }
-
       ssize_t blockSz;
 
       if ( b->headerMode )
@@ -982,8 +988,21 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
 
       //receiving data ( iq samples ) or header
       LOG_D(HW,"before data\n");
-      // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
-      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
+      // added
+      if ((strncmp(topic, "downlink", 8) != 0) && (strncmp(topic, "uplink", 6) != 0)) {
+          LOG_I(HW,"Issue here");
+          AssertFatal(false,"Reading corrupted");
+      }
+      ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
+      if (sz == 24 && !receivedFirstTS) {
+        receivedFirstTS = true;
+        LOG_D(HW,"recieved firstTS: %d\n",receivedFirstTS);
+      // receiving of previously queued up messages in the receive buffer
+      }else if (!receivedFirstTS) {
+        LOG_W(HW,"Ignoring old queued up messages\n");
+        return rc > 0;
+      }
+      // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
       LOG_D(HW,"after data\n");
       LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
 
@@ -1005,7 +1024,8 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           if ( b->headerMode==true && b->remainToTransfer==0) {
             b->headerMode= false;
 
-            if (t->nextRxTstamp == 0) { // First block in UE, resync with the gNB current TS
+            if (t->nextRxTstamp == 0 ) { // First block in UE, resync with the gNB current TS
+            // if ((t->nextRxTstamp == 0) && (receivedFirstTS)) {
             // LOG_D(HW, "Client handling current time\n");
               t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
                               b->th.timestamp -  nsamps_for_initial :
@@ -1013,7 +1033,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
               b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
                                 b->th.timestamp :
                                 nsamps_for_initial;
-              LOG_D(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
+              LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
               b->trashingPacket=true;
               if (b->channel_model)
                 b->channel_model->start_TS = t->nextRxTstamp;
