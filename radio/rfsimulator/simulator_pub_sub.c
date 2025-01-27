@@ -596,6 +596,8 @@ static int rfsimu_vtime_cmd(char *buff, int debug, telnet_printfunc_t prnt, void
 
 static int startServer(openair0_device *device)
 {
+  LOG_I(HW, "Running with pub sub rfsimulator\n");
+
   rfsimulator_state_t *t = (rfsimulator_state_t *)device->priv;
   t->role = SIMU_ROLE_SERVER;
   t->context = zmq_ctx_new();
@@ -712,6 +714,8 @@ static int startServer(openair0_device *device)
 
 static int startClient(openair0_device *device)
 {
+  LOG_I(HW, "Running with pub sub rfsimulator\n");
+
   rfsimulator_state_t *t = device->priv;
   t->role = SIMU_ROLE_CLIENT;
   t->context = zmq_ctx_new();
