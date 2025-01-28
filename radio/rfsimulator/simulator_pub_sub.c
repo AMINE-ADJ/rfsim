@@ -209,7 +209,6 @@ typedef struct {
   poll_telnetcmdq_func_t poll_telnetcmdq;
   int wait_timeout;
   double prop_delay_ms;
-  // zmq_pollitem_t pollitems[];
 } rfsimulator_state_t;
 
 
@@ -601,11 +600,11 @@ static int startServer(openair0_device *device)
   t->context = zmq_ctx_new();
   AssertFatal(t->context != NULL, "Failed to create ZeroMQ context");
 
-  // Create and connect the publisher socket (uplink to broker)
+  // Create the publisher socket
   t->pub_sock = zmq_socket(t->context, ZMQ_PUB);
   AssertFatal(t->pub_sock != NULL, "Failed to create publisher socket");
 
-  // Set up monitoring for publisher socket to detect connection
+  // Set up monitoring for publisher socket to detect connection to the broker
   int rc = zmq_socket_monitor(t->pub_sock, "inproc://monitor.pub", ZMQ_EVENT_ALL);
   AssertFatal(rc == 0, "Failed to set up socket monitoring for publisher");
 
@@ -614,11 +613,11 @@ static int startServer(openair0_device *device)
   rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
   AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
 
-  // Create and connect the subscriber socket (downlink from broker)
+  // Create the subscriber socket to the broker
   t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
   AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
 
-  // Set up monitoring for subscriber socket to detect connection
+  // Set up monitoring for subscriber socket to detect connection to the broker
   rc = zmq_socket_monitor(t->sub_sock, "inproc://monitor.sub", ZMQ_EVENT_ALL);
   AssertFatal(rc == 0, "Failed to set up socket monitoring for subscriber");
 
@@ -690,7 +689,7 @@ static int startServer(openair0_device *device)
     } else {
       zmq_msg_close(&event_msg);
     }
-
+    // Avoid infinite loop
     gettimeofday(&now, NULL);
     double elapsed = (now.tv_sec - start.tv_sec) +
                      (now.tv_usec - start.tv_usec) / 1000000.0;
@@ -717,11 +716,11 @@ static int startClient(openair0_device *device)
   t->context = zmq_ctx_new();
   AssertFatal(t->context != NULL, "Failed to create ZeroMQ context");
 
-  // Create and connect the publisher socket (uplink to broker)
+  // Create the publisher socket
   t->pub_sock = zmq_socket(t->context, ZMQ_PUB);
   AssertFatal(t->pub_sock != NULL, "Failed to create publisher socket");
 
-  // Set up monitoring for publisher socket to detect connection
+  // Set up monitoring for publisher socket to detect connection to the broker
   int rc = zmq_socket_monitor(t->pub_sock, "inproc://monitor.pub", ZMQ_EVENT_ALL);
   AssertFatal(rc == 0, "Failed to set up socket monitoring for publisher");
 
@@ -730,11 +729,11 @@ static int startClient(openair0_device *device)
   rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
   AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
 
-  // Create and connect the subscriber socket (downlink from broker)
+  // Create the subscriber socket to the broker
   t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
   AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
 
-  // Set up monitoring for subscriber socket to detect connection
+  // Set up monitoring for subscriber socket to detect connection to the broker
   rc = zmq_socket_monitor(t->sub_sock, "inproc://monitor.sub", ZMQ_EVENT_ALL);
   AssertFatal(rc == 0, "Failed to set up socket monitoring for subscriber");
 
