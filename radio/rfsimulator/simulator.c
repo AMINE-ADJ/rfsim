@@ -590,6 +590,7 @@ static int rfsimu_vtime_cmd(char *buff, int debug, telnet_printfunc_t prnt, void
 
 static int startServer(openair0_device *device)
 {
+  LOG_I(HW, "Running with client server rfsimulator\n");
   int sock = -1;
   struct addrinfo *results = NULL;
   struct addrinfo *rp= NULL;
@@ -700,6 +701,8 @@ static int client_try_connect(const char *host, uint16_t port)
 
 static int startClient(openair0_device *device)
 {
+  LOG_I(HW, "Running with client server rfsimulator\n");
+
   rfsimulator_state_t *t = device->priv;
   t->role = SIMU_ROLE_CLIENT;
   int sock;
