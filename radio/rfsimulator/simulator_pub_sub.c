@@ -895,7 +895,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
     };
   int rc = zmq_poll(items, 1, timeout);
   if (rc < 0) {
-    if (errno == EINTR || errno == ETERM) {
+    if (errno == EINTR) {
     return false;
   }
   LOG_W(HW, "zmq_poll() failed, errno(%d)\n", errno);
