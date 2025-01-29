@@ -614,7 +614,7 @@ static int startServer(openair0_device *device)
   rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
   AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
 
-  // Create the subscriber socket to the broker
+  // Create the subscriber socket
   t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
   AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
 
@@ -638,7 +638,6 @@ static int startServer(openair0_device *device)
   rc = zmq_connect(t->sub_sock, sub_endpoint);
   AssertFatal(rc == 0, "Failed to connect subscriber socket");
 
-  // Subscribe to the uplink topic
   const char *topic = "uplink";
   rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
   AssertFatal(rc == 0, "Failed to subscribe to topic");
@@ -646,6 +645,7 @@ static int startServer(openair0_device *device)
   const char *topic2 = "join";
   rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic2, strlen(topic2));
   AssertFatal(rc == 0, "Failed to subscribe to topic");
+
   size_t fd_size = sizeof(t->fd_pub_sock);
   rc = zmq_getsockopt(t->pub_sock, ZMQ_FD, &t->fd_pub_sock, &fd_size);
   AssertFatal(rc == 0, "Cannot get fd for pub_sock");
@@ -701,7 +701,7 @@ static int startServer(openair0_device *device)
     usleep(10000); 
   }
 
-  LOG_D(HW, "rfsimulator: connection established\n");
+  LOG_I(HW, "Connection to the broker established\n");
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
 
@@ -731,7 +731,7 @@ static int startClient(openair0_device *device)
   rc = zmq_connect(pub_monitor, "inproc://monitor.pub");
   AssertFatal(rc == 0, "Failed to connect publisher monitor socket");
 
-  // Create the subscriber socket to the broker
+  // Create the subscriber socket
   t->sub_sock = zmq_socket(t->context, ZMQ_SUB);
   AssertFatal(t->sub_sock != NULL, "Failed to create subscriber socket");
 
@@ -808,13 +808,12 @@ static int startClient(openair0_device *device)
     usleep(10000); 
   }
 
-  LOG_I(HW, "rfsimulator: connection established\n");
+  LOG_I(HW, "Connection to the broker established\n");
   zmq_close(pub_monitor);
   zmq_close(sub_monitor);
   char jointopic[] = "join";
   zmq_send(t->pub_sock, jointopic, strlen(jointopic), ZMQ_SNDMORE);
   zmq_send(t->pub_sock, t->device_id, strlen(t->device_id), 0);
-  // usleep(20000);
   return allocCirBuf(t, atoi(t->device_id));
 
 }
@@ -891,13 +890,10 @@ static int rfsimulator_write(openair0_device *device, openair0_timestamp timesta
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initial) {
   // Process all incoming events on socket
   // store the data in lists
-  AssertFatal(t->sub_sock != NULL, "Socket is uninitialized");
   zmq_pollitem_t items[] = {
         { t->sub_sock, 0, ZMQ_POLLIN, 0 }// maybe this should be moved to another function
     };
   int rc = zmq_poll(items, 1, timeout);
-  // LOG_I(HW,"rc: %d\n",rc);
-  // LOG_I(HW,"stuck here\n");
   if (rc < 0) {
     if (errno == EINTR || errno == ETERM) {
     return false;
@@ -914,7 +910,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       //receiving topic
       char topic[256];
       int cap = sizeof(topic);
-      LOG_D(HW,"before topic\n");
       // int tsize= zmq_recv(t->sub_sock, topic,cap-1 , ZMQ_DONTWAIT);
       int tsize= zmq_recv(t->sub_sock, topic,cap-1 , 0);
       if ( tsize < 0 ) {
@@ -930,7 +925,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         if ( t->role == SIMU_ROLE_SERVER ) {
           char deviceid[256];
           int cap = sizeof(deviceid);
-          LOG_D(HW,"before device\n");
           // int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , ZMQ_DONTWAIT);
           int idsize= zmq_recv(t->sub_sock, deviceid,cap-1 , 0);
           if ( idsize < 0 ) {
@@ -963,8 +957,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       }
       buffer_t *b = NULL;
       if (t->role == SIMU_ROLE_SERVER) { // receiving formatted topic = topic + device_id 
-        // char deviceid[256];
-        // strcpy(deviceid, topic + strlen("uplink") + 1);
         char deviceid[256];
         sscanf(topic, "uplink %255s", deviceid);
         int id = atoi(deviceid);
@@ -988,12 +980,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
                  b->circularBufEnd - b->transferPtr ;
 
       //receiving data ( iq samples ) or header
-      LOG_D(HW,"before data\n");
-      // added
-      if ((strncmp(topic, "downlink", 8) != 0) && (strncmp(topic, "uplink", 6) != 0)) {
-          LOG_I(HW,"Issue here");
-          AssertFatal(false,"Reading corrupted");
-      }
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
       if (sz == 24 && !receivedFirstTS) {
         receivedFirstTS = true;
@@ -1004,9 +990,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         return rc > 0;
       }
       // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
-      LOG_D(HW,"after data\n");
       LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
-
       if ( sz < 0 ) {
         if ( errno != EAGAIN ) {
           LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
@@ -1014,7 +998,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         }
       }
       if (sz > 0 ) {
-          LOG_D(HW, "Socket rcv %zd bytes\n", sz);
+          LOG_D(HW, "Received on topic %s, %zd bytes\n", topic, sz);
           b->remainToTransfer -= sz;
           b->transferPtr+=sz;
 
@@ -1026,8 +1010,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
             b->headerMode= false;
 
             if (t->nextRxTstamp == 0 ) { // First block in UE, resync with the gNB current TS
-            // if ((t->nextRxTstamp == 0) && (receivedFirstTS)) {
-            // LOG_D(HW, "Client handling current time\n");
               t->nextRxTstamp=b->th.timestamp> nsamps_for_initial ?
                               b->th.timestamp -  nsamps_for_initial :
                               0;
@@ -1088,14 +1070,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
             }
           }
         }
-      int more = 0;
-      size_t more_size = sizeof(more);
-      zmq_getsockopt(t->sub_sock, ZMQ_RCVMORE, &more, &more_size);
-      if (more) {
-        AssertFatal(false,"Missing multipart data\n");
-      }
     }
-    LOG_D(HW,"end flushinput\n");
   return rc > 0;
 }
 
@@ -1113,7 +1088,6 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       break;
 
   if (first_sock == MAX_FD_RFSIMU) {
-  // if (nb_ue == 0) {
     if ( t->nextRxTstamp == 0)
         LOG_I(HW, "No connected device, generating void samples...\n");
 
