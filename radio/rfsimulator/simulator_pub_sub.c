@@ -57,8 +57,7 @@
 #include "rfsimulator.h"
 #include "hashtable.h"
 #include <sys/time.h>
-#define PORT 4043 //default TCP port for this simulator
-#define XSUBPORT 5555
+#define XSUBPORT 5555 // default ports for this simulator
 #define XPUBPORT 5556
 //
 // CirSize defines the number of samples inquired for a read cycle
@@ -74,8 +73,8 @@
 // #define CirSize 6144000 // 100ms SiSo 20MHz LTE
 // #define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
 // #define minCirSize 86080000
-#define minCirSize 50080000
-// #define minCirSize 20080000
+#define minCirSize 48880000
+// #define minCirSize 50080000
 
 #define sampleToByte(a,b) ((a)*(b)*sizeof(sample_t))
 #define byteToSample(a,b) ((a)/(sizeof(sample_t)*(b)))
@@ -600,7 +599,8 @@ static int startServer(openair0_device *device)
   t->role = SIMU_ROLE_SERVER;
   t->context = zmq_ctx_new();
   AssertFatal(t->context != NULL, "Failed to create ZeroMQ context");
-
+  int io_threads = 4;
+  zmq_ctx_set(t->context, ZMQ_IO_THREADS, io_threads);
   // Create the publisher socket
   t->pub_sock = zmq_socket(t->context, ZMQ_PUB);
   AssertFatal(t->pub_sock != NULL, "Failed to create publisher socket");
@@ -970,17 +970,28 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
         LOG_E(HW, "Received data on not connected socket \n");
         return rc > 0;
       }
+
       ssize_t blockSz;
 
       if ( b->headerMode )
         blockSz=b->remainToTransfer; 
-      else
+      else 
         blockSz= b->transferPtr + b->remainToTransfer <= b->circularBufEnd ?
                  b->remainToTransfer :
                  b->circularBufEnd - b->transferPtr ;
 
+
       //receiving data ( iq samples ) or header
       ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, ZMQ_DONTWAIT);
+      // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
+      if ( sz < 0 ) {
+        if ( errno != EAGAIN ) {
+          LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
+          //abort();
+        }
+      } else if (sz == 0 ) 
+        return rc >0;
+
       if (sz == 24 && !receivedFirstTS) {
         receivedFirstTS = true;
         LOG_D(HW,"recieved firstTS: %d\n",receivedFirstTS);
@@ -988,14 +999,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       }else if (!receivedFirstTS) {
         LOG_W(HW,"Ignoring old queued up messages\n");
         return rc > 0;
-      }
-      // ssize_t sz = zmq_recv(t->sub_sock, b->transferPtr, blockSz, 0);
-      LOG_D(HW, "Received on topic %s , nbr %zd bytes\n", topic, sz);
-      if ( sz < 0 ) {
-        if ( errno != EAGAIN ) {
-          LOG_E(HW, "zmq_recv() failed, errno(%d)\n", errno);
-          //abort();
-        }
       }
       if (sz > 0 ) {
           LOG_D(HW, "Received on topic %s, %zd bytes\n", topic, sz);
@@ -1016,7 +1019,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
               b->lastReceivedTS=b->th.timestamp> nsamps_for_initial ?
                                 b->th.timestamp :
                                 nsamps_for_initial;
-              LOG_I(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
+              LOG_D(HW, "UE got first timestamp: starting at %lu\n", t->nextRxTstamp);
               b->trashingPacket=true;
               if (b->channel_model)
                 b->channel_model->start_TS = t->nextRxTstamp;
