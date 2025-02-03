@@ -70,7 +70,7 @@
 //
 // The default value is chosen for 10ms buffering which makes 23040*20 = 460800 samples
 // The previous value is kept below in comment it was computed for 100ms 1x 20MHz
-// #define CirSize 6144000 // 100ms SiSo 20MHz LTE
+// #define minCirSize 6144000 // 100ms SiSo 20MHz LTE
 // #define minCirSize 460800 // 10ms  SiSo 40Mhz 3/4 sampling NR78 FR1
 // #define minCirSize 86080000
 #define minCirSize 48880000
@@ -332,10 +332,10 @@ static void removeCirBuf(rfsimulator_state_t *bridge, int id) {
 
 static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps);
 
-static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked);
+static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked, int firstMessage);
 
 
-static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_state_t *t) {
+static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_state_t *t, int firstMessage) {
   if (t->saveIQfile != -1) {
     if (write(t->saveIQfile, _buf, count) != count )
       LOG_E(HW, "write() in save iq file failed (%d)\n", errno);
@@ -346,9 +346,15 @@ static void fullwrite(void *pub_sock, void *_buf, ssize_t count, rfsimulator_sta
   // Sending topic
   while (count) {
     if (t->role == SIMU_ROLE_SERVER){
+      if (firstMessage){
+        char topic[] = "first";
+        // zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
+        zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE );
+      } else {
       char topic[] = "downlink";
       // zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE | ZMQ_DONTWAIT);
       zmq_send(pub_sock, topic, strlen(topic), ZMQ_SNDMORE );
+      }
     }
     else {
       char topic[] = "uplink";
@@ -758,7 +764,11 @@ static int startClient(openair0_device *device)
   AssertFatal(rc == 0, "Failed to connect subscriber socket");
 
   // Subscribe to the downlink topic
-  const char *topic = "downlink";
+  // const char *topic = "downlink";
+
+  // rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
+  // AssertFatal(rc == 0, "Failed to subscribe to topic");
+  const char *topic = "first";
 
   rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
   AssertFatal(rc == 0, "Failed to subscribe to topic");
@@ -818,7 +828,7 @@ static int startClient(openair0_device *device)
 
 }
 
-static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked) {
+static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags, bool alreadyLocked, int firstMessage) {
   if (!alreadyLocked)
     pthread_mutex_lock(&Sockmutex);
 
@@ -832,12 +842,11 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
   if ( ((count != 0) && (count == nb_ue)) || t->role ==SIMU_ROLE_CLIENT){
     if (t->fd_pub_sock >= 0) {
       samplesBlockHeader_t header = {nsamps, nbAnt, timestamp};
-      fullwrite(t->pub_sock,&header, sizeof(header), t);
+      fullwrite(t->pub_sock,&header, sizeof(header), t,firstMessage);
       sample_t tmpSamples[nsamps][nbAnt];
-
       if (nbAnt == 1) {
         if (t->fd_pub_sock >= 0) {
-          fullwrite(t->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t);
+          fullwrite(t->pub_sock, samplesVoid[0], sampleToByte(nsamps, nbAnt), t,firstMessage);
         }
       } else {
         for (int a = 0; a < nbAnt; a++) {
@@ -848,7 +857,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
         }
 
         if (t->fd_pub_sock >= 0) {
-          fullwrite(t->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t);
+          fullwrite(t->pub_sock, (void *)tmpSamples, sampleToByte(nsamps, nbAnt), t,firstMessage);
         }
       }
     }
@@ -883,7 +892,7 @@ static int rfsimulator_write_internal(rfsimulator_state_t *t, openair0_timestamp
 
 static int rfsimulator_write(openair0_device *device, openair0_timestamp timestamp, void **samplesVoid, int nsamps, int nbAnt, int flags) {
   timestamp -= device->openair0_cfg->command_line_sample_advance;
-  return rfsimulator_write_internal(device->priv, timestamp, samplesVoid, nsamps, nbAnt, flags, false); // false = with lock
+  return rfsimulator_write_internal(device->priv, timestamp, samplesVoid, nsamps, nbAnt, flags, false, 0); // false = with lock
   // return rfsimulator_write_internal(device->priv, timestamp, samplesVoid, nsamps, nbAnt, flags, true);
 }
 
@@ -921,6 +930,17 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       }
       topic[tsize < cap ? tsize : cap - 1] = '\0';
       LOG_D(HW,"received topic %s\n",topic);
+      // if (strncasecmp(topic, "first", 3) == 0){
+      // // const char *topic = "downlink";
+      // // rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
+      // // AssertFatal(rc == 0, "Failed to subscribe to topic");
+      // }
+      if (strncasecmp(topic, "first", 3) == 0 && t->nextRxTstamp == 0){
+        // Subscribe to the downlink topic
+        const char *topic = "downlink";
+        rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
+        AssertFatal(rc == 0, "Failed to subscribe to topic");
+      }
       if (strncasecmp(topic, "join", 3) == 0){
         if ( t->role == SIMU_ROLE_SERVER ) {
           char deviceid[256];
@@ -947,7 +967,7 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
           for ( int i=0; i < t->tx_num_channels; i++)
             samplesVoid[i]=(void *)&v;
 
-          rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false);
+          rfsimulator_write_internal(t, t->lastWroteTS > 1 ? t->lastWroteTS - 1 : 0, samplesVoid, 1, t->tx_num_channels, 1, false, 1);
 
           buffer_t *b = get_buff_from_id(t, device_id);
           if (b->channel_model)
