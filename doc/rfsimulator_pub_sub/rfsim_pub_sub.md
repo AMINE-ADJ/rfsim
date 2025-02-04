@@ -144,7 +144,7 @@ ping 192.168.70.135 -I oaitun_ue1
 You can use the following script to automatically launch a large number of UEs and monitor the gNB logs as they attach.
 Before running the script, make sure to start the core network and the broker. Then, execute the following command:
 ```
-sudo <path to oai sources>/tools/scripts/test_automation.sh --nb-ue 40
+sudo <path to oai sources>/openairinterface5g/tools/scripts/test_automation.sh --nb-ue 40
 ```
 You can find all the logs in `<path to oai sources>/openairinterface5g/logs`.
 
