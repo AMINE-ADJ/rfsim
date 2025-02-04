@@ -44,11 +44,18 @@ to rebuild the rfsimulator only:
 ```
 # Usage :
 
+## 1. Setup and Start OAI CN5G :
+for this refer to [CN5G setup](../NR_SA_Tutorial_OAI_CN5G.md)for details.
+
+To test with multiple UEs, add more records to the `AuthenticationSubscription` table of the core network database. 
+You can replace your current file with [this one](../../tools/oai_db.sql) containing 64 records.
+
+
+## 2. Launch the broker :
 Similar to the client-server rfsimulator, you can run the UEs and gNB. However, in the publisher-subscriber version, you must launch the broker first, then the gNB.
-## Launch the broker :
 
 ```
-cd openairinterface5g/cmake_targets/ran_build/build
+cd <path to oai sources>/openairinterface5g/cmake_targets/ran_build/build
 ./broker
 ```
 ## Launch the gNB : 
@@ -114,6 +121,13 @@ For each UE specify its device id as well as the accessible broker IP from its n
 
 Make sure that the device id for each UE running is different.
 
+# Test Automation : 
+You can use the following script to automatically launch a large number of UEs and monitor the gNB logs as they attach.
+Before running the script, make sure to start the core network and the broker. Then, execute the following command:
+```
+sudo <path to oai sources>/tools/scripts/test_automation.sh --nb-ue 40
+```
+You can find all the logs in `<path to oai sources>/logs`.
 
 # TODO:
 - Handle connection teardown.
