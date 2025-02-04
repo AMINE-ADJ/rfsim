@@ -154,7 +154,6 @@ unsigned int nb_ue = 0;
 
 static uint64_t CirSize = minCirSize;
 
-bool receivedFirstTS = false;
 typedef c16_t sample_t; // 2*16 bits complex number
 
 typedef struct buffer_s {
@@ -930,11 +929,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       }
       topic[tsize < cap ? tsize : cap - 1] = '\0';
       LOG_D(HW,"received topic %s\n",topic);
-      // if (strncasecmp(topic, "first", 3) == 0){
-      // // const char *topic = "downlink";
-      // // rc = zmq_setsockopt(t->sub_sock, ZMQ_SUBSCRIBE, topic, strlen(topic));
-      // // AssertFatal(rc == 0, "Failed to subscribe to topic");
-      // }
       if (strncasecmp(topic, "first", 3) == 0 && t->nextRxTstamp == 0){
         // Subscribe to the downlink topic
         const char *topic = "downlink";
@@ -1012,14 +1006,6 @@ static bool flushInput(rfsimulator_state_t *t, int timeout, int nsamps_for_initi
       } else if (sz == 0 ) 
         return rc >0;
 
-      if (sz == 24 && !receivedFirstTS) {
-        receivedFirstTS = true;
-        LOG_D(HW,"recieved firstTS: %d\n",receivedFirstTS);
-      // receiving of previously queued up messages in the receive buffer
-      }else if (!receivedFirstTS) {
-        LOG_W(HW,"Ignoring old queued up messages\n");
-        return rc > 0;
-      }
       if (sz > 0 ) {
           LOG_D(HW, "Received on topic %s, %zd bytes\n", topic, sz);
           b->remainToTransfer -= sz;

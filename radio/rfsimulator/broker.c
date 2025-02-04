@@ -6,7 +6,9 @@ int main() {
     void *context = zmq_ctx_new();
     int io_threads = 4;
     zmq_ctx_set(context, ZMQ_IO_THREADS, io_threads);
-    printf("Running with %d, as expected: %d\n",io_threads,zmq_ctx_get (context, ZMQ_IO_THREADS) == io_threads);
+    printf("Running with %d I/O threads, %s\n",
+      io_threads,
+      (zmq_ctx_get(context, ZMQ_IO_THREADS) == io_threads) ? "success" : "fail");
     // XSUB socket for publishers
     void *xsub_socket = zmq_socket(context, ZMQ_XSUB);
     zmq_bind(xsub_socket, "tcp://0.0.0.0:5555");
