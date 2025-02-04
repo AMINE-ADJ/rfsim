@@ -16,17 +16,27 @@ See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
 # Build :
+
+NB : If you want to test with higher number of UEs than 16 UEs,  In `<path to oai sources>/openairinterface5g/common/openairinterface5g_limits.h`
+Set MAX_MOBILES_PER_GNB to 64 
+
+```
+# define MAX_MOBILES_PER_GNB 64
+```
+
 ## Using build_oai 
 
 It's possible to build the rfsimulator device in its traditional implementation, whether by itself or with the OAI gNb or OAI UE
 
 ```
+cd <path to oai sources>/openairinterface5g/cmake_targets
+
 ./build_oai --gNB --nrUE -w SIMU
 ```
 
 to build the publisher-subscriber version you need to add "--zmq" option, 
 ```
-./build_oai --gNb --nrUE --zmq
+./build_oai --gNB --nrUE --zmq
 ```
 to rebuild the rfsimulator only:
 ```
@@ -41,11 +51,11 @@ Similar to the client-server rfsimulator, you can run the UEs and gNB. However, 
 cd openairinterface5g/cmake_targets/ran_build/build
 ./broker
 ```
-## Launch the gNb : 
+## Launch the gNB : 
 
 ```
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf --gNBs.[0].min_rxtxtime 6 --rfsim
-```
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.fr1.273PRB.usrpx300.conf --gNBs.[0].min_rxtxtime 6 --rfsim
+``` 
 
 ## Launch multiple UEs :
 
@@ -67,6 +77,17 @@ sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --uicc0.imsi
 
 ```
 Make sure that the device_id for each UE running is different.
+
+# Test Automation : 
+
+You can use the following script to automatically launch a large number of UEs and monitor the gNB logs as they attach.
+Before running the script, make sure to start the core network and the broker. Then, execute the following command:
+```
+sudo <path to oai sources>/tools/scripts/test_automation.sh --nb-ue 40
+
+```
+You can find all the logs in `<path to oai sources>/logs`.
+
 
 # TODO:
 - Handle connection teardown.
