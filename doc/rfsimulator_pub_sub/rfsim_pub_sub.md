@@ -15,7 +15,9 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 **Downlink**: a topic used to publish data from gNB to UE.  
 **Uplink**: a topic used to publish data from UE to gNB.  
 **First**: a topic used to publish the first message from gNB to UE.  
-**join**: a topic used to publish a join message from UE to gNB, when the UE is first connected to the broker.  
+**Join**: a topic used to publish a join message from UE to gNB, when the UE is first connected to the broker.  
+
+
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
@@ -70,8 +72,8 @@ sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band
 ## 4. Launch the UE
 
 ```bash
-   sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
-   ```
+sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
+```
    
 ## 5. Launch multiple UEs
 ### Scenario
