@@ -4,14 +4,18 @@
 The original implementation of the RF simulator has certain limitations, particularly with regard to sidelink and mobility features. This is due to its client-server architecture, which was implemented using BSD sockets. To overcome these constraints, we transitioned to a publisher-subscriber paradigm using the ZMQ library. This new approach enhances scalability, enabling support for a larger number of devices.  
 # Architecture :
 
-The main components in the new architecture are:
-**Broker**: The broker is built using XSUB and XPUB sockets, and the [zmq_proxy](http://api.zeromq.org/4-2:zmq-proxy) function to route traffic between the two sockets.
+The main components in the new architecture are:  
+**Broker**: The broker is built using XSUB and XPUB sockets, and the [zmq proxy](http://api.zeromq.org/4-2:zmq-proxy) function to route traffic between the two sockets.
 
 The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPUB socket of the broker and a publisher socket that connects to XSUB socket of the broker.
 
 **UE**: Subscribes to **downlink** topic.  
 **gNB**: Subscribes to **uplink** topic, and **join** topic to detect connections from UEs.
-
+## Topics:
+**Downlink**: a topic used to publish data from gNB to UE.  
+**Uplink**: a topic used to publish data from UE to gNB.  
+**First**: a topic used to publish the first message from gNB to UE.  
+**join**: a topic used to publish a join message from UE to gNB, when the UE is first connected to the broker.  
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
