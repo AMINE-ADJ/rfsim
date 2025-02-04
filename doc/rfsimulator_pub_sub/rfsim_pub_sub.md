@@ -68,7 +68,7 @@ sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band
 ```bash
    sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
    ```
-   
+
 ## 5. Launch multiple UEs :
 ### Scenario
 This section is about how to configure and run multiple OAI nrUE in the same end-to-end OAI 5G setup with RFsimulator.
@@ -123,6 +123,17 @@ For each UE specify its device id as well as the accessible broker IP from its n
 
 Make sure that the device id for each UE running is different.
 
+# Ping :
+
+To test the ping from UE_x
+
+```
+<path to oai sources>/tools/scripts/multi-ue.sh -o x
+
+ping 192.168.70.135 -I oaitun_ue1
+
+```
+
 # Test Automation : 
 You can use the following script to automatically launch a large number of UEs and monitor the gNB logs as they attach.
 Before running the script, make sure to start the core network and the broker. Then, execute the following command:
@@ -131,6 +142,7 @@ sudo <path to oai sources>/tools/scripts/test_automation.sh --nb-ue 40
 ```
 You can find all the logs in `<path to oai sources>/logs`.
 
+This setup has been tested with up to 40 UEs running on a machine equipped with 64 CPUs.
 # TODO:
 - Handle connection teardown.
 - Make memory management more efficient.
