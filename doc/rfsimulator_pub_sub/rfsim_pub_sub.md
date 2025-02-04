@@ -62,7 +62,7 @@ sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band
    ```
 ## Launch multiple UEs :
 ### Scenario
-This tutorial is about how to configure and run multiple OAI nrUE in the same end-to-end OAI 5G setup with RFsimulator.
+This section is about how to configure and run multiple OAI nrUE in the same end-to-end OAI 5G setup with RFsimulator.
 
 ### Pre-requisites
 
