@@ -16,17 +16,27 @@ See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
 # Build :
+
+NB : If you want to test with higher number of UEs than 16 UEs,  In `<path to oai sources>/openairinterface5g/common/openairinterface5g_limits.h`
+Set MAX_MOBILES_PER_GNB to 64 
+
+```
+# define MAX_MOBILES_PER_GNB 64
+```
+
 ## Using build_oai 
 
 It's possible to build the rfsimulator device in its traditional implementation, whether by itself or with the OAI gNb or OAI UE
 
 ```
+cd <path to oai sources>/openairinterface5g/cmake_targets
+
 ./build_oai --gNB --nrUE -w SIMU
 ```
 
 to build the publisher-subscriber version you need to add "--zmq" option, 
 ```
-./build_oai --gNb --nrUE --zmq
+./build_oai --gNB --nrUE --zmq
 ```
 to rebuild the rfsimulator only:
 ```
@@ -44,9 +54,8 @@ cd openairinterface5g/cmake_targets/ran_build/build
 ## Launch the gNB : 
 
 ```
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.fr1.273PRB.usrpx300.conf\ --gNBs.[0].min_rxtxtime 6 --rfsim
-```
-## Launch the UE : 
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.fr1.273PRB.usrpx300.conf --gNBs.[0].min_rxtxtime 6 --rfsim
+``` 
 
 ```bash
    sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
