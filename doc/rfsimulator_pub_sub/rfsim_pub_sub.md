@@ -45,7 +45,7 @@ to rebuild the rfsimulator only:
 # Usage :
 
 ## 1. Setup and Start OAI CN5G :
-for this refer to [CN5G setup](../NR_SA_Tutorial_OAI_CN5G.md)for details.
+for this refer to [CN5G setup](../NR_SA_Tutorial_OAI_CN5G.md) for details.
 
 To test with multiple UEs, add more records to the `AuthenticationSubscription` table of the core network database. 
 You can replace your current file with [this one](../../tools/oai_db.sql) containing 64 records.
@@ -58,7 +58,7 @@ Similar to the client-server rfsimulator, you can run the UEs and gNB. However, 
 cd <path to oai sources>/openairinterface5g/cmake_targets/ran_build/build
 ./broker
 ```
-## Launch the gNB : 
+## 3. Launch the gNB : 
 
 ```
 sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.fr1.273PRB.usrpx300.conf --gNBs.[0].min_rxtxtime 6 --rfsim
@@ -67,7 +67,7 @@ sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band
 ```bash
    sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
    ```
-## Launch multiple UEs :
+## 4. Launch multiple UEs :
 ### Scenario
 This section is about how to configure and run multiple OAI nrUE in the same end-to-end OAI 5G setup with RFsimulator.
 
