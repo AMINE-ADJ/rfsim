@@ -132,7 +132,7 @@ Make sure that the device id for each UE running is different.
 To test the ping from UE_x
 
 ```
-<path to oai sources>/tools/scripts/multi-ue.sh -o x
+<path to oai sources>/openairinterface5g/tools/scripts/multi-ue.sh -o x
 
 ping 192.168.70.135 -I oaitun_ue1
 
@@ -144,7 +144,7 @@ Before running the script, make sure to start the core network and the broker. T
 ```
 sudo <path to oai sources>/tools/scripts/test_automation.sh --nb-ue 40
 ```
-You can find all the logs in `<path to oai sources>/logs`.
+You can find all the logs in `<path to oai sources>/openairinterface5g/logs`.
 
 This setup has been tested with up to 40 UEs running on a machine equipped with 64 CPUs.
 # TODO
