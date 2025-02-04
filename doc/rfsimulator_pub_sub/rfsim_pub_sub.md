@@ -21,6 +21,8 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
+This setup has been tested with up to 40 UEs running on a machine equipped with 64 CPUs.
+
 # Build
 
 NB : If you want to test with higher number of UEs than 16 UEs,  In `<path to oai sources>/openairinterface5g/common/openairinterface5g_limits.h`
@@ -148,7 +150,6 @@ sudo <path to oai sources>/openairinterface5g/tools/scripts/test_automation.sh -
 ```
 You can find all the logs in `<path to oai sources>/openairinterface5g/logs`.
 
-This setup has been tested with up to 40 UEs running on a machine equipped with 64 CPUs.
 # TODO
 - Handle connection teardown.
 - Make memory management more efficient.
