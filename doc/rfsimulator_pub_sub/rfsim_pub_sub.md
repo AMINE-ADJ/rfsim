@@ -34,39 +34,77 @@ to rebuild the rfsimulator only:
 ```
 # Usage :
 
-Similar to the client-server rfsimulator, you can run the UEs and gNB. However, in the publisher-subscriber version, you must launch the broker first.
+Similar to the client-server rfsimulator, you can run the UEs and gNB. However, in the publisher-subscriber version, you must launch the broker first, then the gNB.
 ## Launch the broker :
 
 ```
 cd openairinterface5g/cmake_targets/ran_build/build
 ./broker
 ```
-## Launch the gNb : 
+## Launch the gNB : 
 
 ```
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf --gNBs.[0].min_rxtxtime 6 --rfsim
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.fr1.273PRB.usrpx300.conf\ --gNBs.[0].min_rxtxtime 6 --rfsim
 ```
+## Launch the UE : 
 
+```bash
+   sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1
+   ```
 ## Launch multiple UEs :
+### Scenario
+This tutorial is about how to configure and run multiple OAI nrUE in the same end-to-end OAI 5G setup with RFsimulator.
 
-refer to https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/develop/doc/NR_SA_Tutorial_OAI_multi_UE.md for detailed instructions.
+### Pre-requisites
 
-For each UE specify its device-id as well as the accessible broker-ip from its namespace. 
+This tutorial is assuming that OAI CN5G and OAI RAN are already deployed. To learn how to deploy and run a basic setup with OAI nrUE, please refer to [NR_SA_Tutorial_OAI_nrUE.md](NR_SA_Tutorial_OAI_nrUE.md).
 
-Example : to launch the device x 
+RFsimulator:
+- RFsimulator tutorial [rfsimulator/README.md](../radio/rfsimulator/README.md)
 
-```
-~/multi-ue.sh -c x
-~/multi-ue.sh -o x
-```
+### Multiple nrUEs with namespaces
 
-```
-cd openairinterface5g/cmake_targets/ran_build/build
+Important notes:
 
-sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --uicc0.imsi 00101000000000x --rfsim --device_id id --brokerip 10.20x.1.100
+* This should be run on the same host as the OAI gNB
+* Use the script [multi_ue.sh](../tools/scripts/multi-ue.sh) to make namespaces for multiple UEs.
+* For each UE, a namespace shall be created, each one has a different address that will be used as the broker address
+* Each UE shall have a different IMSI, which shall be present in the relevant tables of the MySQL database
+* Each UE shall have a different device id (from 0 to 249)
+1. For the first UE, create the namespace ue1 (`-c 1`), then execute shell inside (`-o 1`, "open"):
 
-```
-Make sure that the device_id for each UE running is different.
+   ```bash
+   sudo ./multi-ue.sh -c 1
+   sudo ./multi-ue.sh -o 1
+   ```
+
+2. After entering the bash environment, run the following command to deploy your first UE
+
+   ```bash
+   sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000001 --rfsim --device_id 1 --brokerip 10.201.1.10
+   ```
+
+3. For the second UE, create the namespace ue2 (`-c 2`), then execute shell inside (`-o 2`, "open"):
+
+   ```bash
+   sudo ./multi-ue.sh -c 2
+   sudo ./multi-ue.sh -o 2
+   ```
+
+4. After entering the bash environment, run the following command to deploy your second UE:
+
+   ```bash
+   sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 --uicc0.imsi 001010000000002 --rfsim --device_id 2 --brokerip 10.202.1.10
+   ```
+
+In the command above, please note that the IMSI and the device id changed.
+
+
+For each UE specify its device id as well as the accessible broker IP from its namespace. 
+
+
+Make sure that the device id for each UE running is different.
+
 
 # TODO:
 - Handle connection teardown.
