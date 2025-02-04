@@ -73,7 +73,7 @@ This section is about how to configure and run multiple OAI nrUE in the same end
 
 ### Pre-requisites
 
-This tutorial is assuming that OAI CN5G and OAI RAN are already deployed. To learn how to deploy and run a basic setup with OAI nrUE, please refer to [NR_SA_Tutorial_OAI_nrUE.md](NR_SA_Tutorial_OAI_nrUE.md).
+This section is assuming that OAI CN5G and OAI RAN are already deployed. To learn how to deploy and run a basic setup with OAI nrUE, please refer to [NR_SA_Tutorial_OAI_nrUE.md](NR_SA_Tutorial_OAI_nrUE.md).
 
 RFsimulator:
 - RFsimulator tutorial [rfsimulator/README.md](../radio/rfsimulator/README.md)
