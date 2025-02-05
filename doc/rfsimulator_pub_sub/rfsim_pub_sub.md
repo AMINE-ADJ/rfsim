@@ -5,7 +5,10 @@ The original implementation of the RF simulator has certain limitations, particu
 # Architecture
 
 The main components in the new architecture are:  
-**Broker**: The broker is built using XSUB and XPUB sockets, and the [zmq proxy](http://api.zeromq.org/4-2:zmq-proxy) function to route traffic between the two sockets.
+**Broker**: The broker is built using XSUB and XPUB sockets, and the [zmq proxy](http://api.zeromq.org/4-2:zmq-proxy) function to route traffic between the two sockets.  
+For more details about XSUB and XPUB sockets refer to: 
+- [XPUB and XSUB socket types](https://zeromq.org/socket-api/)  
+- [Pub Sub with broker](https://zguide.zeromq.org/docs/chapter2/)  
 
 The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPUB socket of the broker and a publisher socket that connects to XSUB socket of the broker.
 
@@ -21,7 +24,7 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
-This setup has been tested with up to 35 UEs running on a machine featuring an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, comprising 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
+This setup was tested with up to 35 UEs running on a machine with an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
 
 # Build
 
