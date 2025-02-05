@@ -21,7 +21,7 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
-This setup has been tested with up to 40 UEs running on a machine featuring an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, comprising 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
+This setup has been tested with up to 35 UEs running on a machine featuring an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, comprising 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
 
 # Build
 
@@ -146,7 +146,7 @@ ping 192.168.70.135 -I oaitun_ue1
 You can use the following script to automatically launch a large number of UEs and monitor the gNB logs as they attach.
 Before running the script, make sure to start the core network and the broker. Then, execute the following command:
 ```
-sudo <path to oai sources>/openairinterface5g/tools/scripts/test_automation.sh --nb-ue 40
+sudo <path to oai sources>/openairinterface5g/tools/scripts/test_automation.sh --nb-ue 35
 ```
 You can find all the logs in `<path to oai sources>/openairinterface5g/logs`.
 
