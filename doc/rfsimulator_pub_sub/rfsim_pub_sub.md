@@ -47,7 +47,7 @@ cd <path to oai sources>/openairinterface5g/cmake_targets
 
 to build the publisher-subscriber version you need to add "--zmq" option, 
 ```
-./build_oai --gNB --nrUE --zmq
+./build_oai --gNB --nrUE --zmq -I
 ```
 to rebuild the rfsimulator only:
 ```
