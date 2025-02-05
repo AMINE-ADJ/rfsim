@@ -12,7 +12,7 @@ For more details about XSUB and XPUB sockets refer to:
 
 The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPUB socket of the broker and a publisher socket that connects to XSUB socket of the broker.
 
-**UE**: Subscribes to **downlink** topic.  
+**UE**: Subscribes to **downlink** and **first** topic.  
 **gNB**: Subscribes to **uplink** topic, and **join** topic to detect connections from UEs.
 ## Topics
 **Downlink**: a topic used to publish data from gNB to UE.  
