@@ -21,6 +21,8 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 See the following diagram:
 ![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
 
+This setup has been tested with up to 40 UEs running on a machine featuring an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, comprising 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
+
 # Build
 
 NB : If you want to test with higher number of UEs than 16 UEs,  In `<path to oai sources>/openairinterface5g/common/openairinterface5g_limits.h`
@@ -37,7 +39,7 @@ It's possible to build the rfsimulator device in its traditional implementation,
 ```
 cd <path to oai sources>/openairinterface5g/cmake_targets
 
-./build_oai --gNB --nrUE -w SIMU
+./build_oai -c -C --gNB --nrUE -w SIMU --ninja -I 
 ```
 
 to build the publisher-subscriber version you need to add "--zmq" option, 
@@ -148,7 +150,6 @@ sudo <path to oai sources>/openairinterface5g/tools/scripts/test_automation.sh -
 ```
 You can find all the logs in `<path to oai sources>/openairinterface5g/logs`.
 
-This setup has been tested with up to 40 UEs running on a machine equipped with 64 CPUs.
 # TODO
 - Handle connection teardown.
 - Make memory management more efficient.
