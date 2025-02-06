@@ -22,7 +22,7 @@ The gNB and the UE both have 2 sockets, a subscriber socket that connects to XPU
 
 
 See the following diagram:
-![Rfsim pubsub architecture](rfsim-pubsub-architecture.jpg)
+![Rfsim pubsub architecture](rfsim-pubsub-architecture.png)
 
 This setup was tested with up to 40 UEs running on a machine with an Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz, 64 CPUs (2 NUMA nodes, each with 16 physical cores and 2 threads per core) and 128 GB of RAM.
 
