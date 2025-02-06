@@ -22,10 +22,11 @@
 */
 
 /*
- * PUB SUB TODO: 
- * - zmq_poll() failed, errno(88)
- * - Tear down
- * - Socket loss detection,
+ * The rarchitecture of RFsim to Pub-Sub was done by: 
+ * - Abdelkhalek Beraoud
+ * - Adlen ksentini
+ * - Amine Adjou
+ * - Karim Boutiba
  */
 /*
  * Open issues and limitations
