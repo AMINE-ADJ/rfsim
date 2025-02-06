@@ -89,7 +89,7 @@ sudo ./nr-uesoftmodem -r 273 --numerology 1 --band 77 -C 3949740000  --ssb 1492 
 --uicc0.imsi $IMSI --rfsim --device_id $i --brokerip \"$BROKER_IP\" \
     > \"$LOG_FILE\" 2>&1 &
   "
-  sleep 3
+  sleep 7
   echo "Exiting namespace for UE $i."
 done
 
